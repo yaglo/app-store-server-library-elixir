@@ -36,7 +36,7 @@ defmodule AppStoreServerLibrary.Models.Environment do
   def from_string(unknown) when is_binary(unknown), do: unknown
 
   @doc """
-  Convert environment atom to string
+  Convert environment atom to string representation.
   """
   @spec to_string(t()) :: String.t()
   def to_string(:sandbox), do: "Sandbox"

@@ -6,6 +6,7 @@ defmodule AppStoreServerLibrary.Models.JWSRenewalInfoDecodedPayload do
   """
 
   alias AppStoreServerLibrary.Models.{
+    AdvancedCommerceRenewalInfo,
     AutoRenewStatus,
     Environment,
     ExpirationIntent,
@@ -43,7 +44,8 @@ defmodule AppStoreServerLibrary.Models.JWSRenewalInfoDecodedPayload do
           eligible_win_back_offer_ids: [String.t()] | nil,
           app_account_token: String.t() | nil,
           app_transaction_id: String.t() | nil,
-          offer_period: String.t() | nil
+          offer_period: String.t() | nil,
+          advanced_commerce_info: AdvancedCommerceRenewalInfo.t() | nil
         }
 
   defstruct [
@@ -73,7 +75,8 @@ defmodule AppStoreServerLibrary.Models.JWSRenewalInfoDecodedPayload do
     :eligible_win_back_offer_ids,
     :app_account_token,
     :app_transaction_id,
-    :offer_period
+    :offer_period,
+    :advanced_commerce_info
   ]
 
   @expiration_intent_allowed [1, 2, 3, 4, 5]
@@ -122,11 +125,10 @@ defmodule AppStoreServerLibrary.Models.JWSRenewalInfoDecodedPayload do
              {"renewal_price", :number},
              {"offer_discount_type", :atom_or_string},
              {"raw_offer_discount_type", :string},
-             {"environment", :atom_or_string},
-             {"raw_environment", :string},
              {"app_account_token", :string},
              {"app_transaction_id", :string},
-             {"offer_period", :string}
+             {"offer_period", :string},
+             {"advanced_commerce_info", :map}
            ]),
          :ok <- Validator.optional_string_list(map, "eligible_win_back_offer_ids"),
          :ok <-
@@ -161,8 +163,25 @@ defmodule AppStoreServerLibrary.Models.JWSRenewalInfoDecodedPayload do
          :ok <-
            Validator.optional_integer_domain(map, "raw_offer_type", @offer_type_allowed_ints),
          :ok <- Validator.optional_enum(map, "offer_discount_type", @offer_discount_allowed),
-         :ok <- Validator.optional_enum(map, "environment", Environment.allowed_values()) do
-      {:ok, struct(__MODULE__, map)}
+         :ok <- Validator.optional_enum(map, "environment", Environment.allowed_values()),
+         {:ok, parsed_map} <- parse_advanced_commerce_info(map) do
+      {:ok, struct(__MODULE__, parsed_map)}
+    end
+  end
+
+  defp parse_advanced_commerce_info(map) do
+    case Map.get(map, :advanced_commerce_info) do
+      nil ->
+        {:ok, map}
+
+      info when is_map(info) ->
+        case AdvancedCommerceRenewalInfo.new(info) do
+          {:ok, parsed} -> {:ok, Map.put(map, :advanced_commerce_info, parsed)}
+          {:error, _} = error -> error
+        end
+
+      _other ->
+        {:error, {:verification_failure, "advanced_commerce_info must be a map"}}
     end
   end
 end

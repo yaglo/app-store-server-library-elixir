@@ -10,7 +10,7 @@ defmodule AppStoreServerLibrary.Models.NotificationHistoryResponseItem do
 
   alias AppStoreServerLibrary.Models.SendAttemptItem
 
-  @type t() :: %__MODULE__{
+  @type t :: %__MODULE__{
           signed_payload: String.t() | nil,
           send_attempts: [SendAttemptItem.t()] | nil,
           first_send_attempt_result: atom() | String.t() | nil,

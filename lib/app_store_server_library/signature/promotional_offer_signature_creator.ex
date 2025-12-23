@@ -7,14 +7,14 @@ defmodule AppStoreServerLibrary.Signature.PromotionalOfferSignatureCreator do
   https://developer.apple.com/documentation/storekit/in-app_purchase/original_api_for_in-app_purchase/subscriptions_and_offers/generating_a_signature_for_promotional_offers
 
   The signature is created by concatenating specific fields with Unicode
-  separator characters (\u2063) and signing the resulting string with ECDSA.
+  separator characters (\\u2063) and signing the resulting string with ECDSA.
   """
 
-  @enforce_keys [:signing_key, :key_id, :bundle_id]
-  defstruct [:signing_key, :key_id, :bundle_id]
+  @enforce_keys [:decoded_key, :key_id, :bundle_id]
+  defstruct [:decoded_key, :key_id, :bundle_id]
 
   @type t :: %__MODULE__{
-          signing_key: String.t(),
+          decoded_key: any(),
           key_id: String.t(),
           bundle_id: String.t()
         }
@@ -43,42 +43,49 @@ defmodule AppStoreServerLibrary.Signature.PromotionalOfferSignatureCreator do
       )
 
   """
-  @spec new(options()) :: t()
+  @spec new(options()) :: {:ok, t()} | {:error, :invalid_pem}
   def new(opts) when is_list(opts) do
-    %__MODULE__{
-      signing_key: Keyword.fetch!(opts, :signing_key),
-      key_id: Keyword.fetch!(opts, :key_id),
-      bundle_id: Keyword.fetch!(opts, :bundle_id)
-    }
+    with {:ok, decoded_key} <- load_private_key(Keyword.fetch!(opts, :signing_key)) do
+      {:ok,
+       %__MODULE__{
+         decoded_key: decoded_key,
+         key_id: Keyword.fetch!(opts, :key_id),
+         bundle_id: Keyword.fetch!(opts, :bundle_id)
+       }}
+    end
   end
 
   @doc """
   Create a promotional offer signature.
 
-  Returns the Base64 encoded signature.
-
   ## Parameters
-  - product_identifier: The subscription product identifier
-  - subscription_offer_id: The subscription discount identifier
-  - application_username: An optional string value that you define; may be an empty string
-  - nonce: A one-time UUID value that your server generates. Generate a new nonce for every signature.
-  - timestamp: A timestamp your server generates in UNIX time format, in milliseconds. The timestamp keeps the offer active for 24 hours.
+
+    * `creator` - The PromotionalOfferSignatureCreator struct
+    * `product_identifier` - The subscription product identifier
+    * `subscription_offer_id` - The subscription discount identifier
+    * `application_username` - An optional string value that you define; may be an empty string
+    * `nonce` - A one-time UUID value that your server generates
+    * `timestamp` - A timestamp in UNIX time format, in milliseconds (must be positive)
 
   ## Returns
 
-    * `{:ok, signature}` on success
-    * `{:error, reason}` on failure
+    * `{:ok, signature}` - The Base64 encoded signature string
+    * `{:error, {:invalid_timestamp, message}}` - If timestamp is not a positive integer
+
   """
   @spec create_signature(t(), String.t(), String.t(), String.t(), String.t(), integer()) ::
-          {:ok, String.t()} | {:error, term()}
+          {:ok, String.t()} | {:error, {:invalid_timestamp, String.t()}}
   def create_signature(
-        creator,
+        %__MODULE__{} = creator,
         product_identifier,
         subscription_offer_id,
         application_username,
         nonce,
         timestamp
-      ) do
+      )
+      when is_binary(product_identifier) and is_binary(subscription_offer_id) and
+             is_binary(application_username) and is_binary(nonce) and is_integer(timestamp) and
+             timestamp > 0 do
     # Build the payload with Unicode separator \u2063
     payload =
       creator.bundle_id <>
@@ -95,19 +102,31 @@ defmodule AppStoreServerLibrary.Signature.PromotionalOfferSignatureCreator do
         "\u2063" <>
         to_string(timestamp)
 
-    private_key = load_private_key(creator.signing_key)
     payload_binary = :unicode.characters_to_binary(payload)
 
-    signature = :public_key.sign(payload_binary, :sha256, private_key)
+    signature = :public_key.sign(payload_binary, :sha256, creator.decoded_key)
 
     {:ok, Base.encode64(signature)}
-  rescue
-    e in ArgumentError -> {:error, {:invalid_key, e.message}}
-    e in ErlangError -> {:error, {:signing_error, inspect(e)}}
+  end
+
+  def create_signature(
+        %__MODULE__{},
+        product_identifier,
+        subscription_offer_id,
+        application_username,
+        nonce,
+        timestamp
+      )
+      when is_binary(product_identifier) and is_binary(subscription_offer_id) and
+             is_binary(application_username) and is_binary(nonce) and is_integer(timestamp) do
+    {:error, {:invalid_timestamp, "Timestamp must be a positive integer"}}
   end
 
   defp load_private_key(pem) do
     [entry | _] = :public_key.pem_decode(pem)
-    :public_key.pem_entry_decode(entry)
+    {:ok, :public_key.pem_entry_decode(entry)}
+  rescue
+    MatchError -> {:error, :invalid_pem}
+    ArgumentError -> {:error, :invalid_pem}
   end
 end

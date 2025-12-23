@@ -14,7 +14,9 @@ defmodule AppStoreServerLibrary.Application do
         # Cache settings (optional, these are defaults)
         certificate_cache_max_size: 32,
         certificate_cache_ttl_seconds: 900,  # 15 minutes
-        token_cache_ttl_seconds: 240         # 4 minutes (tokens expire at 5 min)
+        token_cache_ttl_seconds: 240,        # 4 minutes (tokens expire at 5 min)
+        # OCSP verification timeout (optional)
+        ocsp_timeout: 30_000                 # 30 seconds
 
   ## Starting the Application
 

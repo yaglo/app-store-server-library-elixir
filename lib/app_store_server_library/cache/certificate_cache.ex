@@ -7,7 +7,7 @@ defmodule AppStoreServerLibrary.Cache.CertificateCache do
 
   The cache is shared across all requests and uses the same parameters as
   Apple's official implementations:
-  - Maximum 32 entries
+  - Maximum 32 entries (default)
   - 15 minute TTL
 
   ## Usage
@@ -20,9 +20,24 @@ defmodule AppStoreServerLibrary.Cache.CertificateCache do
       config :app_store_server_library,
         certificate_cache_max_size: 32,
         certificate_cache_ttl_seconds: 900
+
+  ## Memory Considerations
+
+  Each cache entry stores a PEM-encoded public key (typically ~200-400 bytes) plus
+  the cache key hash (32 bytes). With the default maximum of 32 entries, memory
+  usage is bounded to approximately 15-20 KB.
+
+  If you increase `certificate_cache_max_size` significantly, monitor your
+  application's memory usage. For most applications, the default of 32 entries
+  provides excellent cache hit rates while keeping memory usage minimal.
+
+  The cache automatically evicts expired entries when the capacity limit is reached,
+  prioritizing removal of the oldest expired entries first.
   """
 
   use GenServer
+
+  import AppStoreServerLibrary.Cache.CacheUtils
 
   @default_max_size 32
   @default_ttl_seconds 15 * 60
@@ -32,6 +47,7 @@ defmodule AppStoreServerLibrary.Cache.CertificateCache do
   @doc """
   Starts the certificate cache.
   """
+  @spec start_link(Keyword.t()) :: GenServer.on_start()
   def start_link(opts \\ []) do
     name = Keyword.get(opts, :name, __MODULE__)
     GenServer.start_link(__MODULE__, opts, name: name)
@@ -143,24 +159,10 @@ defmodule AppStoreServerLibrary.Cache.CertificateCache do
   @impl true
   def handle_cast({:put, certificates, public_key_pem}, state) do
     cache_key = compute_cache_key(certificates)
-    expiration = System.monotonic_time(:second) + state.ttl_seconds
+    now = System.monotonic_time(:second)
+    expiration = now + state.ttl_seconds
 
-    # Clean expired entries if cache is at capacity
-    cache =
-      if map_size(state.cache) >= state.max_size do
-        clean_expired(state.cache)
-      else
-        state.cache
-      end
-
-    # If still at capacity after cleaning, evict oldest entry
-    cache =
-      if map_size(cache) >= state.max_size do
-        evict_oldest(cache)
-      else
-        cache
-      end
-
+    cache = ensure_capacity(state.cache, state.max_size, now)
     new_cache = Map.put(cache, cache_key, {public_key_pem, expiration})
     {:noreply, %{state | cache: new_cache}}
   end
@@ -168,23 +170,6 @@ defmodule AppStoreServerLibrary.Cache.CertificateCache do
   # Private helpers
 
   defp compute_cache_key(certificates) do
-    :erlang.phash2(certificates)
-  end
-
-  defp clean_expired(cache) do
-    now = System.monotonic_time(:second)
-
-    cache
-    |> Enum.filter(fn {_key, {_value, expiration}} -> expiration > now end)
-    |> Map.new()
-  end
-
-  defp evict_oldest(cache) do
-    # Find and remove the entry with the earliest expiration
-    {oldest_key, _} =
-      cache
-      |> Enum.min_by(fn {_key, {_value, expiration}} -> expiration end)
-
-    Map.delete(cache, oldest_key)
+    :crypto.hash(:sha256, :erlang.term_to_binary(certificates))
   end
 end

@@ -3,28 +3,30 @@ defmodule AppStoreServerLibrary.Utility.JSON do
   Utility functions for JSON key conversion between camelCase and snake_case.
   """
 
-  require Logger
   alias AppStoreServerLibrary.Models.Environment
 
   @doc """
-  Converts a camelCase string (or already-atom key) to a snake_case atom when known, otherwise returns the snake_case string.
+  Converts a camelCase string (or already-atom key) to a snake_case atom.
+
+  ## Security Note
+
+  This function uses `String.to_atom/1` which creates atoms dynamically. This is
+  safe in this library because all JSON data processed here comes from trusted sources:
+
+  1. **JWS Payloads (notifications, transactions, etc.)**: The signature is verified
+     against Apple's root CA certificate chain BEFORE key conversion happens. An attacker
+     would need Apple's private keys to forge a valid signature.
+
+  2. **API Responses**: These come over HTTPS directly from Apple's App Store Server API.
+     The TLS connection ensures data integrity and authenticity.
+
+  Untrusted user input should never be passed to this function.
   """
-  @spec camel_to_snake_atom(String.t() | atom()) :: atom() | String.t()
+  @spec camel_to_snake_atom(String.t() | atom()) :: atom()
   def camel_to_snake_atom(atom) when is_atom(atom), do: atom
 
   def camel_to_snake_atom(camel_str) when is_binary(camel_str) do
-    snake = camel_to_snake(camel_str)
-
-    try do
-      String.to_existing_atom(snake)
-    rescue
-      ArgumentError ->
-        Logger.debug(fn ->
-          "AppStoreServerLibrary: ignoring unknown JSON field #{inspect(camel_str)} (snake #{inspect(snake)})"
-        end)
-
-        snake
-    end
+    camel_str |> camel_to_snake() |> String.to_atom()
   end
 
   @doc """

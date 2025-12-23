@@ -1,12 +1,13 @@
 defmodule AppStoreServerLibrary.Models.MassExtendRenewalDateStatusResponse do
   @moduledoc """
-  Response for checking the status of mass renewal date extensions.
+  A response that indicates the current status of a request to extend the subscription
+  renewal date to all eligible subscribers.
+
+  https://developer.apple.com/documentation/appstoreserverapi/massextendrenewaldatestatusresponse
   """
 
   defstruct [
-    :request_uuid,
     :request_identifier,
-    :status,
     :complete,
     :complete_date,
     :succeeded_count,
@@ -14,9 +15,7 @@ defmodule AppStoreServerLibrary.Models.MassExtendRenewalDateStatusResponse do
   ]
 
   @type t :: %__MODULE__{
-          request_uuid: String.t() | nil,
           request_identifier: String.t() | nil,
-          status: String.t() | nil,
           complete: boolean() | nil,
           complete_date: integer() | nil,
           succeeded_count: integer() | nil,

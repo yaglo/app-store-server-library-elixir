@@ -30,7 +30,7 @@ defmodule AppStoreServerLibrary.X509VerificationTest do
           @effective_date
         )
 
-      assert {:error, :invalid_chain_length} = result
+      assert {:error, {:invalid_chain_length, _message}} = result
     end
 
     test "invalid chain length - too long" do
@@ -50,7 +50,7 @@ defmodule AppStoreServerLibrary.X509VerificationTest do
           @effective_date
         )
 
-      assert {:error, :invalid_chain_length} = result
+      assert {:error, {:invalid_chain_length, _message}} = result
     end
 
     test "invalid base64 in certificate list" do
@@ -65,7 +65,7 @@ defmodule AppStoreServerLibrary.X509VerificationTest do
           @effective_date
         )
 
-      assert {:error, :invalid_certificate} = result
+      assert {:error, {:invalid_certificate, _message}} = result
     end
 
     test "invalid data in certificate list returns error" do
@@ -83,14 +83,8 @@ defmodule AppStoreServerLibrary.X509VerificationTest do
           @effective_date
         )
 
-      # Error can be atom or tuple
-      case result do
-        {:error, error_type} when is_atom(error_type) ->
-          assert error_type in [:invalid_certificate, :verification_failure]
-
-        {:error, {error_type, _message}} ->
-          assert error_type in [:invalid_certificate, :verification_failure]
-      end
+      assert {:error, {error_type, _message}} = result
+      assert error_type in [:invalid_certificate, :verification_failure]
     end
 
     test "empty root certificates" do
@@ -104,7 +98,7 @@ defmodule AppStoreServerLibrary.X509VerificationTest do
           @effective_date
         )
 
-      assert {:error, :invalid_certificate} = result
+      assert {:error, {:invalid_certificate, _message}} = result
     end
 
     test "chain verification with mismatched root returns error" do

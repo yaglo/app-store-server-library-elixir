@@ -28,7 +28,7 @@ defmodule AppStoreServerLibrary.PayloadVerificationTest do
 
     opts = if app_apple_id, do: Keyword.put(opts, :app_apple_id, app_apple_id), else: opts
 
-    verifier = SignedDataVerifier.new(opts)
+    {:ok, verifier} = SignedDataVerifier.new(opts)
 
     # Disable strict checks for test certificates (they don't have authority identifiers)
     updated_chain_verifier = %{verifier.chain_verifier | enable_strict_checks: false}
@@ -86,18 +86,17 @@ defmodule AppStoreServerLibrary.PayloadVerificationTest do
     end
 
     test "verifier requires app_apple_id for production" do
-      assert_raise ArgumentError, fn ->
-        SignedDataVerifier.new(
-          root_certificates: [],
-          enable_online_checks: false,
-          environment: :production,
-          bundle_id: "com.example"
-        )
-      end
+      assert {:error, {:invalid_app_identifier, _message}} =
+               SignedDataVerifier.new(
+                 root_certificates: [],
+                 enable_online_checks: false,
+                 environment: :production,
+                 bundle_id: "com.example"
+               )
     end
 
     test "verifier allows nil app_apple_id for sandbox" do
-      verifier =
+      {:ok, verifier} =
         SignedDataVerifier.new(
           root_certificates: [],
           enable_online_checks: false,
@@ -237,7 +236,8 @@ defmodule AppStoreServerLibrary.PayloadVerificationTest do
     ]
 
     opts = if app_apple_id, do: Keyword.put(opts, :app_apple_id, app_apple_id), else: opts
-    SignedDataVerifier.new(opts)
+    {:ok, verifier} = SignedDataVerifier.new(opts)
+    verifier
   end
 
   describe "realtime request verification" do
@@ -606,6 +606,93 @@ defmodule AppStoreServerLibrary.PayloadVerificationTest do
 
       assert {:ok, summary} = result
       assert summary.storefront_country_codes == ["USA", "CAN", "MEX"]
+    end
+  end
+
+  describe "app transaction verification" do
+    test "decodes app transaction successfully" do
+      verifier = get_local_testing_verifier("com.example", 12345)
+
+      payload = %{
+        "receiptType" => "LocalTesting",
+        "appAppleId" => 12345,
+        "bundleId" => "com.example",
+        "applicationVersion" => "1.0",
+        "originalApplicationVersion" => "1.0",
+        "deviceVerification" => "base64encodeddata",
+        "deviceVerificationNonce" => "abc-123",
+        "receiptCreationDate" => 1_698_148_900_000,
+        "originalPurchaseDate" => 1_698_148_800_000
+      }
+
+      signed_payload = create_mock_jws(payload)
+
+      result = SignedDataVerifier.verify_and_decode_app_transaction(verifier, signed_payload)
+
+      assert {:ok, app_transaction} = result
+      assert app_transaction.bundle_id == "com.example"
+      assert app_transaction.app_apple_id == 12345
+      assert app_transaction.application_version == "1.0"
+      assert app_transaction.receipt_type == :local_testing
+    end
+
+    test "fails with bundle ID mismatch" do
+      verifier = get_local_testing_verifier("com.other", 12345)
+
+      payload = %{
+        "receiptType" => "LocalTesting",
+        "appAppleId" => 12345,
+        "bundleId" => "com.example",
+        "applicationVersion" => "1.0",
+        "receiptCreationDate" => 1_698_148_900_000
+      }
+
+      signed_payload = create_mock_jws(payload)
+
+      result = SignedDataVerifier.verify_and_decode_app_transaction(verifier, signed_payload)
+
+      assert {:error, {:invalid_app_identifier, "Bundle ID mismatch"}} = result
+    end
+
+    test "fails with environment mismatch" do
+      verifier = get_local_testing_verifier("com.example", 12345)
+
+      payload = %{
+        "receiptType" => "Sandbox",
+        "appAppleId" => 12345,
+        "bundleId" => "com.example",
+        "applicationVersion" => "1.0",
+        "receiptCreationDate" => 1_698_148_900_000
+      }
+
+      signed_payload = create_mock_jws(payload)
+
+      result = SignedDataVerifier.verify_and_decode_app_transaction(verifier, signed_payload)
+
+      assert {:error, {:invalid_environment, "Environment mismatch"}} = result
+    end
+  end
+
+  describe "app_apple_id validation in non-production" do
+    test "non-production environment skips app_apple_id validation for app transactions" do
+      # In local_testing, app_apple_id check is not performed (only production checks)
+      verifier = get_local_testing_verifier("com.example", 12345)
+
+      payload = %{
+        "receiptType" => "LocalTesting",
+        "appAppleId" => 99999,
+        "bundleId" => "com.example",
+        "applicationVersion" => "1.0",
+        "receiptCreationDate" => 1_698_148_900_000
+      }
+
+      signed_payload = create_mock_jws(payload)
+
+      # In local_testing, app_apple_id mismatch is allowed
+      result = SignedDataVerifier.verify_and_decode_app_transaction(verifier, signed_payload)
+
+      assert {:ok, app_transaction} = result
+      assert app_transaction.app_apple_id == 99999
     end
   end
 end

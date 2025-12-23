@@ -7,7 +7,7 @@ defmodule AppStoreServerLibrary.Models.OrderLookupResponse do
 
   alias AppStoreServerLibrary.Models.OrderLookupStatus
 
-  @type t() :: %__MODULE__{
+  @type t :: %__MODULE__{
           status: OrderLookupStatus.t() | nil,
           raw_status: integer() | nil,
           signed_transactions: [String.t()] | nil

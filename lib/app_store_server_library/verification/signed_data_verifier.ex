@@ -95,7 +95,7 @@ defmodule AppStoreServerLibrary.Verification.SignedDataVerifier do
       )
 
   """
-  @spec new(options()) :: t()
+  @spec new(options()) :: {:ok, t()} | {:error, {:invalid_app_identifier, String.t()}}
   def new(opts) when is_list(opts) do
     root_certificates = Keyword.fetch!(opts, :root_certificates)
     environment = Keyword.fetch!(opts, :environment)
@@ -104,19 +104,21 @@ defmodule AppStoreServerLibrary.Verification.SignedDataVerifier do
     app_apple_id = Keyword.get(opts, :app_apple_id)
 
     if environment == :production and app_apple_id == nil do
-      raise ArgumentError, "app_apple_id is required when environment is :production"
+      {:error, {:invalid_app_identifier, "app_apple_id is required for production environment"}}
+    else
+      chain_verifier = ChainVerifier.new(root_certificates)
+
+      verifier = %__MODULE__{
+        root_certificates: root_certificates,
+        enable_online_checks: enable_online_checks,
+        environment: environment,
+        bundle_id: bundle_id,
+        app_apple_id: app_apple_id,
+        chain_verifier: chain_verifier
+      }
+
+      {:ok, verifier}
     end
-
-    chain_verifier = ChainVerifier.new(root_certificates)
-
-    %__MODULE__{
-      root_certificates: root_certificates,
-      enable_online_checks: enable_online_checks,
-      environment: environment,
-      bundle_id: bundle_id,
-      app_apple_id: app_apple_id,
-      chain_verifier: chain_verifier
-    }
   end
 
   @doc """
@@ -178,7 +180,8 @@ defmodule AppStoreServerLibrary.Verification.SignedDataVerifier do
       fn ->
         with {:ok, decoded_payload} <- decode_signed_object(verifier, signed_payload),
              {:ok, notification} <- to_notification_struct(decoded_payload),
-             {bundle_id, app_apple_id, environment} <- extract_notification_data(notification),
+             {:ok, {bundle_id, app_apple_id, environment}} <-
+               extract_notification_data(notification),
              :ok <- verify_notification_data(verifier, bundle_id, app_apple_id, environment) do
           {:ok, notification}
         end
@@ -328,16 +331,18 @@ defmodule AppStoreServerLibrary.Verification.SignedDataVerifier do
   defp get_effective_date(payload, enable_online_checks) do
     signed_date = Map.get(payload, "signedDate") || Map.get(payload, "receiptCreationDate")
 
-    effective_date =
-      if enable_online_checks or signed_date == nil do
-        System.system_time(:second)
-      else
+    cond do
+      enable_online_checks or signed_date == nil ->
+        {:ok, System.system_time(:second)}
+
+      is_number(signed_date) ->
         # signed_date is in milliseconds, convert to seconds
         # Use trunc/1 to handle floats (Xcode payloads can have fractional milliseconds)
-        trunc(signed_date / 1000)
-      end
+        {:ok, trunc(signed_date / 1000)}
 
-    {:ok, effective_date}
+      true ->
+        {:error, {:verification_failure, "Invalid signedDate format: expected a number"}}
+    end
   end
 
   defp verify_signature(signed_obj, public_key_pem) do
@@ -408,42 +413,38 @@ defmodule AppStoreServerLibrary.Verification.SignedDataVerifier do
     end
   end
 
-  defp extract_notification_data(notification) do
-    cond do
-      notification.data ->
-        data = notification.data
+  defp extract_notification_data(%{data: %{} = data}) do
+    {:ok,
+     {get_field(data, :bundle_id), get_field(data, :app_apple_id), get_field(data, :environment)}}
+  end
 
-        {get_field(data, :bundle_id), get_field(data, :app_apple_id),
-         get_field(data, :environment)}
+  defp extract_notification_data(%{summary: %{} = summary}) do
+    {:ok,
+     {get_field(summary, :bundle_id), get_field(summary, :app_apple_id),
+      get_field(summary, :environment)}}
+  end
 
-      notification.summary ->
-        summary = notification.summary
+  defp extract_notification_data(%{external_purchase_token: %{} = token}) do
+    external_purchase_id = get_field(token, :external_purchase_id)
 
-        {get_field(summary, :bundle_id), get_field(summary, :app_apple_id),
-         get_field(summary, :environment)}
+    environment =
+      if external_purchase_id && String.starts_with?(external_purchase_id, "SANDBOX") do
+        :sandbox
+      else
+        :production
+      end
 
-      notification.external_purchase_token ->
-        token = notification.external_purchase_token
-        external_purchase_id = get_field(token, :external_purchase_id)
+    {:ok, {get_field(token, :bundle_id), get_field(token, :app_apple_id), environment}}
+  end
 
-        environment =
-          if external_purchase_id && String.starts_with?(external_purchase_id, "SANDBOX") do
-            :sandbox
-          else
-            :production
-          end
-
-        {get_field(token, :bundle_id), get_field(token, :app_apple_id), environment}
-
-      true ->
-        {nil, nil, nil}
-    end
+  defp extract_notification_data(_notification) do
+    {:error,
+     {:verification_failure,
+      "Notification does not contain data, summary, or external_purchase_token"}}
   end
 
   # Helper to safely get field from struct or map
-  defp get_field(data, key) when is_struct(data), do: Map.get(data, key)
   defp get_field(data, key) when is_map(data), do: Map.get(data, key)
-  defp get_field(_, _), do: nil
 
   # Struct conversion helpers with snake_case field mapping
 
@@ -463,10 +464,11 @@ defmodule AppStoreServerLibrary.Verification.SignedDataVerifier do
     payload = JSON.keys_to_atoms(payload)
 
     with {:ok, base} <- ResponseBodyV2DecodedPayload.new(payload),
-         {:ok, data} <- maybe_build_data(Map.get(base, :data)),
-         {:ok, summary} <- maybe_build_summary(Map.get(base, :summary)),
+         {:ok, data} <-
+           maybe_build_struct(Map.get(base, :data), AppStoreServerLibrary.Models.Data),
+         {:ok, summary} <- maybe_build_struct(Map.get(base, :summary), Summary),
          {:ok, external_purchase_token} <-
-           maybe_build_external_purchase_token(Map.get(base, :external_purchase_token)) do
+           maybe_build_struct(Map.get(base, :external_purchase_token), ExternalPurchaseToken) do
       case {data, summary, external_purchase_token} do
         {nil, nil, nil} ->
           {:error, {:verification_failure, "Invalid notification payload"}}
@@ -501,24 +503,9 @@ defmodule AppStoreServerLibrary.Verification.SignedDataVerifier do
     |> Summary.new()
   end
 
-  defp maybe_build_data(nil), do: {:ok, nil}
+  defp maybe_build_struct(nil, _module), do: {:ok, nil}
+  defp maybe_build_struct(%{} = data, module), do: data |> JSON.keys_to_atoms() |> module.new()
 
-  defp maybe_build_data(%{} = data),
-    do: data |> JSON.keys_to_atoms() |> AppStoreServerLibrary.Models.Data.new()
-
-  defp maybe_build_data(_), do: {:error, {:verification_failure, "Invalid notification payload"}}
-
-  defp maybe_build_summary(nil), do: {:ok, nil}
-  defp maybe_build_summary(%{} = summary), do: summary |> JSON.keys_to_atoms() |> Summary.new()
-
-  defp maybe_build_summary(_),
-    do: {:error, {:verification_failure, "Invalid notification payload"}}
-
-  defp maybe_build_external_purchase_token(nil), do: {:ok, nil}
-
-  defp maybe_build_external_purchase_token(%{} = token),
-    do: token |> JSON.keys_to_atoms() |> ExternalPurchaseToken.new()
-
-  defp maybe_build_external_purchase_token(_),
+  defp maybe_build_struct(_, _module),
     do: {:error, {:verification_failure, "Invalid notification payload"}}
 end

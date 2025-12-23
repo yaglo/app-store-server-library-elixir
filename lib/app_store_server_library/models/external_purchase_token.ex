@@ -7,18 +7,24 @@ defmodule AppStoreServerLibrary.Models.ExternalPurchaseToken do
 
   alias AppStoreServerLibrary.Verification.Validator
 
-  @type t() :: %__MODULE__{
+  @type t :: %__MODULE__{
           external_purchase_id: String.t() | nil,
           token_creation_date: integer() | nil,
           app_apple_id: integer() | nil,
-          bundle_id: String.t() | nil
+          bundle_id: String.t() | nil,
+          token_type: atom() | String.t() | nil,
+          raw_token_type: String.t() | nil,
+          token_expiration_date: integer() | nil
         }
 
   defstruct [
     :external_purchase_id,
     :token_creation_date,
     :app_apple_id,
-    :bundle_id
+    :bundle_id,
+    :token_type,
+    :raw_token_type,
+    :token_expiration_date
   ]
 
   @doc """
@@ -31,7 +37,10 @@ defmodule AppStoreServerLibrary.Models.ExternalPurchaseToken do
              {"external_purchase_id", :string},
              {"token_creation_date", :number},
              {"app_apple_id", :number},
-             {"bundle_id", :string}
+             {"bundle_id", :string},
+             {"token_type", :atom_or_string},
+             {"raw_token_type", :string},
+             {"token_expiration_date", :number}
            ]) do
       {:ok, struct(__MODULE__, map)}
     end

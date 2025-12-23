@@ -7,7 +7,7 @@ defmodule AppStoreServerLibrary.Models.SendAttemptItem do
 
   alias AppStoreServerLibrary.Models.SendAttemptResult
 
-  @type t() :: %__MODULE__{
+  @type t :: %__MODULE__{
           attempt_date: integer() | nil,
           send_attempt_result: SendAttemptResult.t() | String.t() | nil,
           raw_send_attempt_result: String.t() | nil

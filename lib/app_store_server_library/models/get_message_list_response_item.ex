@@ -5,7 +5,7 @@ defmodule AppStoreServerLibrary.Models.GetMessageListResponseItem do
 
   alias AppStoreServerLibrary.Models.MessageState
 
-  @type t() :: %__MODULE__{
+  @type t :: %__MODULE__{
           message_identifier: String.t() | nil,
           message_state: MessageState.t() | nil,
           raw_message_state: String.t() | nil

@@ -7,6 +7,11 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
   - Check OID extensions in certificates
   - Perform OCSP status checks (when enabled)
   - Cache verified certificate public keys (via CertificateCache GenServer)
+
+  ## Configuration
+
+      config :app_store_server_library,
+        ocsp_timeout: 30_000  # OCSP request timeout in milliseconds (default: 30 seconds)
   """
 
   alias AppStoreServerLibrary.Cache.CertificateCache
@@ -59,7 +64,7 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
   in the shared `CertificateCache` GenServer to avoid repeated OCSP checks.
   """
   @spec verify_chain(t(), [String.t()], boolean(), integer()) ::
-          {:ok, String.t(), t()} | {:error, atom()}
+          {:ok, String.t(), t()} | {:error, {atom(), String.t()}}
   def verify_chain(verifier, certificates, perform_online_checks, effective_date) do
     metadata = %{cert_count: length(certificates), online_checks: perform_online_checks}
 
@@ -101,22 +106,27 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
     end
   end
 
-  defp validate_root_certificates(%{root_certificates: []}), do: {:error, :invalid_certificate}
+  defp validate_root_certificates(%{root_certificates: []}),
+    do: {:error, {:invalid_certificate, "No root certificates configured"}}
+
   defp validate_root_certificates(_), do: :ok
 
   defp validate_chain_length(certificates) when length(certificates) == 3, do: :ok
-  defp validate_chain_length(_), do: {:error, :invalid_chain_length}
+
+  defp validate_chain_length(_),
+    do: {:error, {:invalid_chain_length, "Certificate chain must contain exactly 3 certificates"}}
 
   defp decode_certificates(certificates) do
-    decoded =
+    results =
       Enum.map(certificates, fn cert_b64 ->
-        {:ok, cert_der} = Base.decode64(cert_b64)
-        cert_der
+        Base.decode64(cert_b64)
       end)
 
-    {:ok, decoded}
-  rescue
-    _ -> {:error, :invalid_certificate}
+    if Enum.all?(results, &match?({:ok, _}, &1)) do
+      {:ok, Enum.map(results, fn {:ok, der} -> der end)}
+    else
+      {:error, {:invalid_certificate, "Failed to decode certificate from Base64"}}
+    end
   end
 
   # Skip certificate chain verification when strict checks are disabled (for test certificates)
@@ -157,14 +167,14 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
     end
   rescue
     e ->
-      {:error, {:verification_failure, "Certificate chain validation exception: #{inspect(e)}"}}
+      {:error, {:invalid_chain, "Certificate chain validation exception: #{inspect(e)}"}}
   end
 
   defp verify_chain_root_is_trusted(root_certificates, chain_root_der) do
     if Enum.any?(root_certificates, fn trusted_der -> trusted_der == chain_root_der end) do
       :ok
     else
-      {:error, {:verification_failure, "Chain root certificate is not in trusted roots"}}
+      {:error, {:invalid_chain, "Chain root certificate is not in trusted roots"}}
     end
   end
 
@@ -174,7 +184,7 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
     if :public_key.pkix_verify(cert_der, issuer_pub_key) do
       :ok
     else
-      {:error, {:verification_failure, "Certificate signature verification failed"}}
+      {:error, {:invalid_chain, "Certificate signature verification failed"}}
     end
   end
 
@@ -214,48 +224,36 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
   defp parse_validity_time({:utcTime, time_chars}) do
     time_str = to_string(time_chars)
     # Format: YYMMDDHHMMSSZ
-    {year, rest} = String.split_at(time_str, 2)
-    {month, rest} = String.split_at(rest, 2)
-    {day, rest} = String.split_at(rest, 2)
-    {hour, rest} = String.split_at(rest, 2)
-    {minute, rest} = String.split_at(rest, 2)
-    {second, _} = String.split_at(rest, 2)
-
-    year = String.to_integer(year)
+    <<yy::binary-size(2), rest::binary>> = time_str
+    year = String.to_integer(yy)
     # UTCTime: years 00-49 are 2000-2049, 50-99 are 1950-1999
-    year = if year >= 50, do: 1900 + year, else: 2000 + year
-
-    {:ok, datetime} =
-      NaiveDateTime.new(
-        year,
-        String.to_integer(month),
-        String.to_integer(day),
-        String.to_integer(hour),
-        String.to_integer(minute),
-        String.to_integer(second)
-      )
-
-    DateTime.from_naive!(datetime, "Etc/UTC") |> DateTime.to_unix()
+    full_year = if year >= 50, do: 1900 + year, else: 2000 + year
+    parse_datetime_components(full_year, rest)
   end
 
   defp parse_validity_time({:generalTime, time_chars}) do
     time_str = to_string(time_chars)
     # Format: YYYYMMDDHHMMSSZ
-    {year, rest} = String.split_at(time_str, 4)
-    {month, rest} = String.split_at(rest, 2)
-    {day, rest} = String.split_at(rest, 2)
-    {hour, rest} = String.split_at(rest, 2)
-    {minute, rest} = String.split_at(rest, 2)
-    {second, _} = String.split_at(rest, 2)
+    <<yyyy::binary-size(4), rest::binary>> = time_str
+    parse_datetime_components(String.to_integer(yyyy), rest)
+  end
 
+  defp parse_datetime_components(year, <<
+         mm::binary-size(2),
+         dd::binary-size(2),
+         hh::binary-size(2),
+         mi::binary-size(2),
+         ss::binary-size(2),
+         _rest::binary
+       >>) do
     {:ok, datetime} =
       NaiveDateTime.new(
-        String.to_integer(year),
-        String.to_integer(month),
-        String.to_integer(day),
-        String.to_integer(hour),
-        String.to_integer(minute),
-        String.to_integer(second)
+        year,
+        String.to_integer(mm),
+        String.to_integer(dd),
+        String.to_integer(hh),
+        String.to_integer(mi),
+        String.to_integer(ss)
       )
 
     DateTime.from_naive!(datetime, "Etc/UTC") |> DateTime.to_unix()
@@ -268,7 +266,7 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
     if :public_key.pkix_is_issuer(cert, issuer) do
       :ok
     else
-      {:error, {:verification_failure, "Certificate issuer mismatch"}}
+      {:error, {:invalid_chain, "Certificate issuer mismatch"}}
     end
   end
 
@@ -296,10 +294,10 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
 
       {:ca, _} ->
         {:error,
-         {:verification_failure, "Expected CA certificate but basicConstraints missing or false"}}
+         {:invalid_chain, "Expected CA certificate but basicConstraints missing or false"}}
 
       {:end_entity, {:BasicConstraints, true, _}} ->
-        {:error, {:verification_failure, "End entity certificate should not be a CA"}}
+        {:error, {:invalid_chain, "End entity certificate should not be a CA"}}
 
       {:end_entity, _} ->
         :ok
@@ -358,7 +356,7 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
   @doc """
   Performs an OCSP status check for a certificate.
   """
-  @spec check_ocsp_status(binary(), binary(), binary()) :: :ok | {:error, atom()}
+  @spec check_ocsp_status(binary(), binary(), binary()) :: :ok | {:error, {atom(), String.t()}}
   def check_ocsp_status(cert_der, issuer_der, _root_der) do
     cert = :public_key.pkix_decode_cert(cert_der, :otp)
 
@@ -465,15 +463,31 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
     e -> {:error, {:verification_failure, "Failed to build OCSP request: #{inspect(e)}"}}
   end
 
-  @ocsp_timeout 30_000
+  defp ocsp_timeout do
+    Application.get_env(:app_store_server_library, :ocsp_timeout, 30_000)
+  end
 
   defp send_ocsp_request(ocsp_url, ocsp_request_der) do
+    case ocsp_requester() do
+      nil ->
+        do_send_ocsp_request(ocsp_url, ocsp_request_der)
+
+      # credo:disable-for-next-line Credo.Check.Refactor.Apply
+      {mod, fun} when is_atom(mod) and is_atom(fun) ->
+        apply(mod, fun, [ocsp_url, ocsp_request_der])
+
+      mod when is_atom(mod) ->
+        mod.send_ocsp_request(ocsp_url, ocsp_request_der)
+    end
+  end
+
+  defp do_send_ocsp_request(ocsp_url, ocsp_request_der) do
     headers = [{"content-type", "application/ocsp-request"}]
 
     case Req.post(ocsp_url,
            body: ocsp_request_der,
            headers: headers,
-           receive_timeout: @ocsp_timeout
+           receive_timeout: ocsp_timeout()
          ) do
       {:ok, %Req.Response{status: 200, body: response_body}} ->
         {:ok, response_body}
@@ -488,6 +502,8 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
         {:error, {:retryable_verification_failure, "OCSP error: #{inspect(reason)}"}}
     end
   end
+
+  defp validate_ocsp_response(:skip_validation, _cert_der, _issuer_der), do: :ok
 
   defp validate_ocsp_response(ocsp_response_der, cert_der, issuer_der) do
     # Use OTP's built-in OCSP validation
@@ -507,6 +523,10 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
     end
   rescue
     e -> {:error, {:retryable_verification_failure, "OCSP validation exception: #{inspect(e)}"}}
+  end
+
+  defp ocsp_requester do
+    Application.get_env(:app_store_server_library, :ocsp_requester)
   end
 
   defp extract_public_key([leaf_der | _]) do

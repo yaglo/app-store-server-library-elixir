@@ -169,6 +169,9 @@ defmodule AppStoreServerLibrary.Telemetry do
           Map.merge(metadata, %{kind: kind, reason: reason})
         )
 
+        # Use :erlang.raise/3 to preserve the original stacktrace for throws/exits.
+        # Unlike `reraise` (which only works with exceptions), this handles all
+        # catch kinds (:throw, :exit, :error) and maintains proper stack context.
         :erlang.raise(kind, reason, __STACKTRACE__)
     end
   end

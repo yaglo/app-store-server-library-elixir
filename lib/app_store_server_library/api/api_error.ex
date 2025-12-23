@@ -266,16 +266,37 @@ defmodule AppStoreServerLibrary.API.APIError do
 
   @doc """
   Returns the Apple documentation URL for the error code.
+
+  The URL is constructed by converting the error name to Apple's documentation format.
+  For example, `:invalid_transaction_id` becomes `invalidtransactioniderror`.
+
+  For unknown error codes, returns a link to the general error codes page.
   """
   @spec doc_url(t()) :: String.t()
   def doc_url(code) do
     case Map.get(@errors, code) do
       {name, _, _} ->
-        error_name = name |> Atom.to_string() |> String.replace("_", "") |> Kernel.<>("error")
+        # Apple's documentation URLs use lowercase names without underscores, ending in "error"
+        # e.g., :invalid_transaction_id -> "invalidtransactioniderror"
+        error_name =
+          name
+          |> Atom.to_string()
+          |> String.replace("_", "")
+          |> ensure_error_suffix()
+
         "#{@base_url}/#{error_name}"
 
       nil ->
         "#{@base_url}/error_codes"
+    end
+  end
+
+  # Ensure the URL path ends with "error" (some error names already include it)
+  defp ensure_error_suffix(name) do
+    if String.ends_with?(name, "error") do
+      name
+    else
+      name <> "error"
     end
   end
 end

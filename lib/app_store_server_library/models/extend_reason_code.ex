@@ -5,23 +5,12 @@ defmodule AppStoreServerLibrary.Models.ExtendReasonCode do
   https://developer.apple.com/documentation/appstoreserverapi/extendreasoncode
   """
 
-  @type t :: :undeclared | :customer_satisfaction | :other | :service_issue_or_outage
+  use AppStoreServerLibrary.Models.Enum
 
-  @doc """
-  Convert integer to extend reason code atom
-  """
-  @spec from_integer(integer()) :: t()
-  def from_integer(0), do: :undeclared
-  def from_integer(1), do: :customer_satisfaction
-  def from_integer(2), do: :other
-  def from_integer(3), do: :service_issue_or_outage
-
-  @doc """
-  Convert extend reason code atom to integer
-  """
-  @spec to_integer(t()) :: integer()
-  def to_integer(:undeclared), do: 0
-  def to_integer(:customer_satisfaction), do: 1
-  def to_integer(:other), do: 2
-  def to_integer(:service_issue_or_outage), do: 3
+  defenum_int do
+    value(:undeclared, 0)
+    value(:customer_satisfaction, 1)
+    value(:other, 2)
+    value(:service_issue_or_outage, 3)
+  end
 end

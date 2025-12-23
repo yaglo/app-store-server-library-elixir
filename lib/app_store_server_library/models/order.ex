@@ -3,11 +3,18 @@ defmodule AppStoreServerLibrary.Models.Order do
   Order types for sorting transaction history.
   """
 
-  @type t :: :ascending | :descending
+  use AppStoreServerLibrary.Models.Enum
 
-  @ascending :ascending
-  @descending :descending
+  defenum do
+    value(:ascending, "ASCENDING")
+    value(:descending, "DESCENDING")
+  end
 
-  def ascending, do: @ascending
-  def descending, do: @descending
+  @doc "Ascending sort order."
+  @spec ascending() :: t()
+  def ascending, do: :ascending
+
+  @doc "Descending sort order."
+  @spec descending() :: t()
+  def descending, do: :descending
 end

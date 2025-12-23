@@ -2,31 +2,43 @@ defmodule AppStoreServerLibrary.APITest do
   use ExUnit.Case, async: true
 
   alias AppStoreServerLibrary.API.{APIException, AppStoreServerAPIClient}
+  alias AppStoreServerLibrary.Client
 
   alias AppStoreServerLibrary.Models.{
-    AccountTenure,
     ConsumptionRequest,
-    ConsumptionStatus,
     DefaultConfigurationRequest,
-    DeliveryStatus,
-    ExtendReasonCode,
     ExtendRenewalDateRequest,
-    LifetimeDollarsPurchased,
     MassExtendRenewalDateRequest,
-    NotificationTypeV2,
     Order,
-    Platform,
-    PlayTime,
     ProductType,
-    RefundPreference,
     TransactionHistoryRequest,
-    UpdateAppAccountTokenRequest,
-    UserStatus
+    UpdateAppAccountTokenRequest
   }
 
   describe "AppStoreServerAPIClient" do
+    test "Client.new returns tuple and Client.new! returns struct" do
+      {:ok, client} =
+        Client.new(
+          signing_key: "test-key",
+          key_id: "keyId",
+          issuer_id: "issuerId",
+          bundle_id: "com.example",
+          environment: :sandbox
+        )
+
+      assert %AppStoreServerAPIClient{} = client
+
+      assert Client.new!(
+               signing_key: "test-key",
+               key_id: "keyId",
+               issuer_id: "issuerId",
+               bundle_id: "com.example",
+               environment: :sandbox
+             )
+    end
+
     test "creates client with valid parameters" do
-      client =
+      {:ok, client} =
         AppStoreServerAPIClient.new(
           signing_key: "test-key",
           key_id: "keyId",
@@ -44,7 +56,7 @@ defmodule AppStoreServerLibrary.APITest do
     end
 
     test "creates client with production environment" do
-      client =
+      {:ok, client} =
         AppStoreServerAPIClient.new(
           signing_key: "test-key",
           key_id: "keyId",
@@ -58,7 +70,7 @@ defmodule AppStoreServerLibrary.APITest do
     end
 
     test "creates client with local testing environment" do
-      client =
+      {:ok, client} =
         AppStoreServerAPIClient.new(
           signing_key: "test-key",
           key_id: "keyId",
@@ -85,7 +97,7 @@ defmodule AppStoreServerLibrary.APITest do
 
       request = %MassExtendRenewalDateRequest{
         extend_by_days: 45,
-        extend_reason_code: ExtendReasonCode.CUSTOMER_SATISFACTION,
+        extend_reason_code: :customer_satisfaction,
         request_identifier: "fdf964a4-233b-486c-aac1-97d8d52688ac",
         storefront_country_codes: ["USA", "MEX"],
         product_id: "com.example.productId"
@@ -128,7 +140,7 @@ defmodule AppStoreServerLibrary.APITest do
 
       request = %ExtendRenewalDateRequest{
         extend_by_days: 45,
-        extend_reason_code: ExtendReasonCode.CUSTOMER_SATISFACTION,
+        extend_reason_code: :customer_satisfaction,
         request_identifier: "fdf964a4-233b-486c-aac1-97d8d52688ac"
       }
 
@@ -177,9 +189,10 @@ defmodule AppStoreServerLibrary.APITest do
         assert {"authorization", "Bearer " <> _token} =
                  List.keyfind(conn.req_headers, "authorization", 0)
 
-        # Verify query parameters - status values are comma-separated
+        # Verify query parameters - status values are repeated keys per Apple's API spec
         query_string = conn.query_string
-        assert query_string =~ "status=2%2C1"
+        assert query_string =~ "status=2"
+        assert query_string =~ "status=1"
 
         # Return mock response
         response_body =
@@ -291,8 +304,8 @@ defmodule AppStoreServerLibrary.APITest do
       request = %{
         start_date: 1_698_148_900_000,
         end_date: 1_698_148_950_000,
-        notification_type: NotificationTypeV2.SUBSCRIBED,
-        notification_subtype: Subtype.INITIAL_BUY,
+        notification_type: :subscribed,
+        notification_subtype: :initial_buy,
         transaction_id: "999733843",
         only_failures: true
       }
@@ -429,36 +442,66 @@ defmodule AppStoreServerLibrary.APITest do
       assert response.test_notification_token == "ce3af791-365e-4c60-841b-1674b43c1609"
     end
 
-    test "send_consumption_data" do
-      client = create_test_client()
+    test "send_consumption_information" do
+      bypass = Bypass.open()
+      client = create_bypass_client(bypass)
 
       request = %ConsumptionRequest{
         customer_consented: true,
-        consumption_status: ConsumptionStatus.NOT_CONSUMED,
-        platform: Platform.NON_APPLE,
+        delivery_status: :delivered,
         sample_content_provided: false,
-        delivery_status: DeliveryStatus.DID_NOT_DELIVER_DUE_TO_SERVER_OUTAGE,
-        app_account_token: "7389a31a-fb6d-4569-a2a6-db7d85d84813",
-        account_tenure: AccountTenure.THIRTY_DAYS_TO_NINETY_DAYS,
-        play_time: PlayTime.ONE_DAY_TO_FOUR_DAYS,
-        lifetime_dollars_refunded:
-          :one_thousand_dollars_to_one_thousand_nine_hundred_ninety_nine_dollars_and_ninety_nine_cents,
-        lifetime_dollars_purchased: LifetimeDollarsPurchased.TWO_THOUSAND_DOLLARS_OR_GREATER,
-        user_status: UserStatus.LIMITED_ACCESS,
-        refund_preference: RefundPreference.NO_PREFERENCE
+        consumption_percentage: 50_000,
+        refund_preference: :decline
       }
 
-      client =
-        expect_http_request(
-          client,
-          :put,
-          "/inApps/v1/transactions/consumption/49571273",
-          %{},
-          request,
-          nil
-        )
+      Bypass.expect(bypass, "PUT", "/inApps/v2/transactions/consumption/49571273", fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        parsed_body = Jason.decode!(body)
 
-      result = AppStoreServerAPIClient.send_consumption_data(client, "49571273", request)
+        # Verify the request body is correctly serialized with camelCase keys and string values
+        assert parsed_body["customerConsented"] == true
+        assert parsed_body["deliveryStatus"] == "DELIVERED"
+        assert parsed_body["sampleContentProvided"] == false
+        assert parsed_body["consumptionPercentage"] == 50_000
+        assert parsed_body["refundPreference"] == "DECLINE"
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(202, "")
+      end)
+
+      result = AppStoreServerAPIClient.send_consumption_information(client, "49571273", request)
+      assert result == :ok
+    end
+
+    test "send_consumption_information_minimal" do
+      bypass = Bypass.open()
+      client = create_bypass_client(bypass)
+
+      # Test with only required fields
+      request = %ConsumptionRequest{
+        customer_consented: true,
+        delivery_status: :undelivered_server_outage,
+        sample_content_provided: true
+      }
+
+      Bypass.expect(bypass, "PUT", "/inApps/v2/transactions/consumption/12345", fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        parsed_body = Jason.decode!(body)
+
+        # Verify only required fields are present
+        assert parsed_body["customerConsented"] == true
+        assert parsed_body["deliveryStatus"] == "UNDELIVERED_SERVER_OUTAGE"
+        assert parsed_body["sampleContentProvided"] == true
+        refute Map.has_key?(parsed_body, "consumptionPercentage")
+        refute Map.has_key?(parsed_body, "refundPreference")
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(202, "")
+      end)
+
+      result = AppStoreServerAPIClient.send_consumption_information(client, "12345", request)
       assert result == :ok
     end
 
@@ -506,15 +549,20 @@ defmodule AppStoreServerLibrary.APITest do
       assert response.signed_app_transaction_info == "signed_app_transaction_info_value"
     end
 
-    test "upload_image" do
+    # PNG magic bytes for test data
+    @png_magic_bytes <<137, 80, 78, 71, 13, 10, 26, 10>>
+
+    test "upload_image with valid PNG" do
       client = create_test_client()
+      # Valid PNG: magic bytes followed by some data
+      valid_png = @png_magic_bytes <> <<1, 2, 3>>
 
       client =
         expect_binary_request(
           client,
           :put,
           "/inApps/v1/messaging/image/a1b2c3d4-e5f6-7890-a1b2-c3d4e5f67890",
-          <<1, 2, 3>>,
+          valid_png,
           "image/png"
         )
 
@@ -522,10 +570,25 @@ defmodule AppStoreServerLibrary.APITest do
         AppStoreServerAPIClient.upload_image(
           client,
           "a1b2c3d4-e5f6-7890-a1b2-c3d4e5f67890",
-          <<1, 2, 3>>
+          valid_png
         )
 
       assert result == :ok
+    end
+
+    test "upload_image rejects invalid PNG" do
+      client = create_test_client()
+      # Invalid data - not a PNG
+      invalid_data = <<1, 2, 3>>
+
+      result =
+        AppStoreServerAPIClient.upload_image(
+          client,
+          "a1b2c3d4-e5f6-7890-a1b2-c3d4e5f67890",
+          invalid_data
+        )
+
+      assert result == {:error, :invalid_png}
     end
 
     test "delete_image" do
@@ -760,15 +823,14 @@ defmodule AppStoreServerLibrary.APITest do
 
     test "xcode_not_supported_error" do
       # Xcode environment should not be allowed for API client
-      assert_raise ArgumentError, fn ->
-        AppStoreServerAPIClient.new(
-          signing_key: File.read!("test/resources/certs/testSigningKey.p8"),
-          key_id: "keyId",
-          issuer_id: "issuerId",
-          bundle_id: "com.example",
-          environment: :xcode
-        )
-      end
+      assert {:error, :xcode_not_supported} =
+               AppStoreServerAPIClient.new(
+                 signing_key: File.read!("test/resources/certs/testSigningKey.p8"),
+                 key_id: "keyId",
+                 issuer_id: "issuerId",
+                 bundle_id: "com.example",
+                 environment: :xcode
+               )
     end
 
     test "invalid_app_account_token_error" do
@@ -936,13 +998,16 @@ defmodule AppStoreServerLibrary.APITest do
   defp create_test_client do
     signing_key = File.read!("test/resources/certs/testSigningKey.p8")
 
-    AppStoreServerAPIClient.new(
-      signing_key: signing_key,
-      key_id: "keyId",
-      issuer_id: "issuerId",
-      bundle_id: "com.example",
-      environment: :local_testing
-    )
+    {:ok, client} =
+      AppStoreServerAPIClient.new(
+        signing_key: signing_key,
+        key_id: "keyId",
+        issuer_id: "issuerId",
+        bundle_id: "com.example",
+        environment: :local_testing
+      )
+
+    client
   end
 
   defp create_bypass_client(bypass) do
@@ -956,7 +1021,7 @@ defmodule AppStoreServerLibrary.APITest do
     }
   end
 
-  defp expect_http_request(_client, method, path, _params, _body, response_file) do
+  defp expect_http_request(_client, method, path, _expected_params, _expected_body, response_file) do
     bypass = Bypass.open()
 
     test_client = %AppStoreServerAPIClient{
@@ -984,7 +1049,7 @@ defmodule AppStoreServerLibrary.APITest do
     test_client
   end
 
-  defp expect_binary_request(client, method, path, _binary_data, content_type) do
+  defp expect_binary_request(client, method, path, _expected_binary_data, content_type) do
     bypass = Bypass.open()
 
     # Create new client with bypass URL
@@ -1012,7 +1077,15 @@ defmodule AppStoreServerLibrary.APITest do
     test_client
   end
 
-  defp expect_http_request_error(client, method, path, _params, _body, status_code, error_file) do
+  defp expect_http_request_error(
+         client,
+         method,
+         path,
+         _expected_params,
+         _expected_body,
+         status_code,
+         error_file
+       ) do
     bypass = Bypass.open()
 
     # Create new client with bypass URL

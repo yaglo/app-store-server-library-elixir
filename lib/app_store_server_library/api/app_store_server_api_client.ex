@@ -13,8 +13,16 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   """
 
   require Logger
-  @library_version Mix.Project.config()[:version]
-  @user_agent "app-store-server-library/elixir/#{@library_version}"
+
+  # Use Application.spec to get version at runtime, avoiding Mix dependency in releases
+  defp library_version do
+    case Application.spec(:app_store_server_library, :vsn) do
+      nil -> "0.0.0"
+      vsn -> to_string(vsn)
+    end
+  end
+
+  defp user_agent, do: "app-store-server-library/elixir/#{library_version()}"
 
   alias AppStoreServerLibrary.Models.{
     AppTransactionInfoResponse,
@@ -30,17 +38,21 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
     GetMessageListResponseItem,
     HistoryResponse,
     ImageState,
+    InAppOwnershipType,
     MassExtendRenewalDateRequest,
     MassExtendRenewalDateResponse,
     MassExtendRenewalDateStatusResponse,
+    MessageState,
     NotificationHistoryRequest,
     NotificationHistoryResponse,
+    NotificationHistoryResponseItem,
+    Order,
     OrderLookupResponse,
     OrderLookupStatus,
+    ProductType,
     RefundHistoryResponse,
     SendAttemptItem,
     SendAttemptResult,
-    NotificationHistoryResponseItem,
     SendTestNotificationResponse,
     Status,
     StatusResponse,
@@ -55,6 +67,10 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   alias AppStoreServerLibrary.Telemetry
   alias AppStoreServerLibrary.Utility.JSON
 
+  # Default HTTP timeouts in milliseconds
+  @default_connect_timeout 30_000
+  @default_receive_timeout 60_000
+
   @enforce_keys [:signing_key, :key_id, :issuer_id, :bundle_id, :environment]
   defstruct [
     :base_url,
@@ -62,7 +78,10 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
     :key_id,
     :issuer_id,
     :bundle_id,
-    :environment
+    :environment,
+    jwt_expiration: 300,
+    connect_timeout: @default_connect_timeout,
+    receive_timeout: @default_receive_timeout
   ]
 
   @type t :: %__MODULE__{
@@ -71,7 +90,10 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
           key_id: String.t(),
           issuer_id: String.t(),
           bundle_id: String.t(),
-          environment: Environment.t()
+          environment: Environment.t(),
+          jwt_expiration: integer(),
+          connect_timeout: pos_integer(),
+          receive_timeout: pos_integer()
         }
 
   @type options :: [
@@ -79,7 +101,10 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
           key_id: String.t(),
           issuer_id: String.t(),
           bundle_id: String.t(),
-          environment: Environment.t()
+          environment: Environment.t(),
+          jwt_expiration: integer(),
+          connect_timeout: pos_integer(),
+          receive_timeout: pos_integer()
         ]
 
   @doc """
@@ -92,6 +117,9 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
     * `:issuer_id` - Issuer ID from App Store Connect - **required**
     * `:bundle_id` - Your app's bundle identifier - **required**
     * `:environment` - `:sandbox`, `:production`, or `:local_testing` - **required**
+    * `:jwt_expiration` - JWT expiration time in seconds (default: 300)
+    * `:connect_timeout` - HTTP connect timeout in milliseconds (default: 30,000)
+    * `:receive_timeout` - HTTP receive timeout in milliseconds (default: 60,000)
 
   ## Examples
 
@@ -104,24 +132,44 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
       )
 
   """
-  @spec new(options()) :: t()
+  @spec new(options()) ::
+          {:ok, t()}
+          | {:error,
+             :invalid_environment
+             | :xcode_not_supported
+             | {:missing_option, atom()}}
   def new(opts) when is_list(opts) do
-    signing_key = Keyword.fetch!(opts, :signing_key)
-    key_id = Keyword.fetch!(opts, :key_id)
-    issuer_id = Keyword.fetch!(opts, :issuer_id)
-    bundle_id = Keyword.fetch!(opts, :bundle_id)
-    environment = Keyword.fetch!(opts, :environment)
+    with {:ok, signing_key} <- fetch_required(opts, :signing_key),
+         {:ok, key_id} <- fetch_required(opts, :key_id),
+         {:ok, issuer_id} <- fetch_required(opts, :issuer_id),
+         {:ok, bundle_id} <- fetch_required(opts, :bundle_id),
+         {:ok, environment} <- fetch_required(opts, :environment),
+         {:ok, base_url} <- get_base_url(environment) do
+      jwt_expiration = Keyword.get(opts, :jwt_expiration, 300)
+      connect_timeout = Keyword.get(opts, :connect_timeout, @default_connect_timeout)
+      receive_timeout = Keyword.get(opts, :receive_timeout, @default_receive_timeout)
 
-    base_url = get_base_url(environment)
+      client = %__MODULE__{
+        base_url: base_url,
+        signing_key: signing_key,
+        key_id: key_id,
+        issuer_id: issuer_id,
+        bundle_id: bundle_id,
+        environment: environment,
+        jwt_expiration: jwt_expiration,
+        connect_timeout: connect_timeout,
+        receive_timeout: receive_timeout
+      }
 
-    %__MODULE__{
-      base_url: base_url,
-      signing_key: signing_key,
-      key_id: key_id,
-      issuer_id: issuer_id,
-      bundle_id: bundle_id,
-      environment: environment
-    }
+      {:ok, client}
+    end
+  end
+
+  defp fetch_required(opts, key) do
+    case Keyword.fetch(opts, key) do
+      {:ok, value} -> {:ok, value}
+      :error -> {:error, {:missing_option, key}}
+    end
   end
 
   # API Endpoint Functions
@@ -167,7 +215,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   @doc """
   Get the statuses for all of a customer's auto-renewable subscriptions in your app.
   """
-  @spec get_all_subscription_statuses(t(), String.t(), [integer()] | nil) ::
+  @spec get_all_subscription_statuses(t(), String.t(), [Status.t()] | nil) ::
           {:ok, StatusResponse.t()} | {:error, APIException.t()}
   def get_all_subscription_statuses(client, transaction_id, status \\ nil) do
     path = "/inApps/v1/subscriptions/#{transaction_id}"
@@ -175,7 +223,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
     params =
       if status,
         do: %{
-          "status" => Enum.map_join(status, ",", &Status.to_integer/1)
+          "status" => Enum.map(status, &Status.to_integer/1)
         },
         else: %{}
 
@@ -255,12 +303,12 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   end
 
   @doc """
-  Send consumption information about a consumable in-app purchase to the App Store.
+  Send consumption information about an In-App Purchase to the App Store after your server receives a consumption request notification.
   """
-  @spec send_consumption_data(t(), String.t(), ConsumptionRequest.t()) ::
+  @spec send_consumption_information(t(), String.t(), ConsumptionRequest.t()) ::
           :ok | {:error, APIException.t()}
-  def send_consumption_data(client, transaction_id, request) do
-    path = "/inApps/v1/transactions/consumption/#{transaction_id}"
+  def send_consumption_information(client, transaction_id, request) do
+    path = "/inApps/v2/transactions/consumption/#{transaction_id}"
     make_request(client, :put, path, %{}, request, nil)
   end
 
@@ -286,14 +334,27 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
 
   # Retention Messaging Functions
 
+  # PNG magic bytes: 0x89 P N G \r \n 0x1A \n
+  @png_magic_bytes <<137, 80, 78, 71, 13, 10, 26, 10>>
+
   @doc """
   Upload an image to use for retention messaging.
+
+  The image must be a valid PNG file (verified by checking magic bytes).
   """
-  @spec upload_image(t(), String.t(), binary()) :: :ok | {:error, APIException.t()}
+  @spec upload_image(t(), String.t(), binary()) ::
+          :ok | {:error, APIException.t() | :invalid_png}
   def upload_image(client, image_identifier, image) do
-    path = "/inApps/v1/messaging/image/#{image_identifier}"
-    make_binary_request(client, :put, path, image, "image/png")
+    if valid_png?(image) do
+      path = "/inApps/v1/messaging/image/#{image_identifier}"
+      make_request(client, :put, path, %{}, image, nil, "image/png")
+    else
+      {:error, :invalid_png}
+    end
   end
+
+  defp valid_png?(<<@png_magic_bytes, _rest::binary>>), do: true
+  defp valid_png?(_), do: false
 
   @doc """
   Delete a previously uploaded image.
@@ -369,10 +430,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   """
   @spec get_transaction_info!(t(), String.t()) :: TransactionInfoResponse.t()
   def get_transaction_info!(client, transaction_id) do
-    case get_transaction_info(client, transaction_id) do
-      {:ok, response} -> response
-      {:error, exception} -> raise exception
-    end
+    get_transaction_info(client, transaction_id) |> handle_bang_result()
   end
 
   @doc """
@@ -381,21 +439,15 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   @spec get_transaction_history!(t(), String.t(), String.t() | nil, TransactionHistoryRequest.t()) ::
           HistoryResponse.t()
   def get_transaction_history!(client, transaction_id, revision \\ nil, request) do
-    case get_transaction_history(client, transaction_id, revision, request) do
-      {:ok, response} -> response
-      {:error, exception} -> raise exception
-    end
+    get_transaction_history(client, transaction_id, revision, request) |> handle_bang_result()
   end
 
   @doc """
   Same as `get_all_subscription_statuses/3` but raises `APIException` on error.
   """
-  @spec get_all_subscription_statuses!(t(), String.t(), [integer()] | nil) :: StatusResponse.t()
+  @spec get_all_subscription_statuses!(t(), String.t(), [Status.t()] | nil) :: StatusResponse.t()
   def get_all_subscription_statuses!(client, transaction_id, status \\ nil) do
-    case get_all_subscription_statuses(client, transaction_id, status) do
-      {:ok, response} -> response
-      {:error, exception} -> raise exception
-    end
+    get_all_subscription_statuses(client, transaction_id, status) |> handle_bang_result()
   end
 
   @doc """
@@ -403,10 +455,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   """
   @spec get_refund_history!(t(), String.t(), String.t() | nil) :: RefundHistoryResponse.t()
   def get_refund_history!(client, transaction_id, revision \\ nil) do
-    case get_refund_history(client, transaction_id, revision) do
-      {:ok, response} -> response
-      {:error, exception} -> raise exception
-    end
+    get_refund_history(client, transaction_id, revision) |> handle_bang_result()
   end
 
   @doc """
@@ -414,10 +463,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   """
   @spec look_up_order_id!(t(), String.t()) :: OrderLookupResponse.t()
   def look_up_order_id!(client, order_id) do
-    case look_up_order_id(client, order_id) do
-      {:ok, response} -> response
-      {:error, exception} -> raise exception
-    end
+    look_up_order_id(client, order_id) |> handle_bang_result()
   end
 
   @doc """
@@ -425,10 +471,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   """
   @spec request_test_notification!(t()) :: SendTestNotificationResponse.t()
   def request_test_notification!(client) do
-    case request_test_notification(client) do
-      {:ok, response} -> response
-      {:error, exception} -> raise exception
-    end
+    request_test_notification(client) |> handle_bang_result()
   end
 
   @doc """
@@ -437,10 +480,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   @spec get_notification_history!(t(), String.t() | nil, NotificationHistoryRequest.t()) ::
           NotificationHistoryResponse.t()
   def get_notification_history!(client, pagination_token \\ nil, request) do
-    case get_notification_history(client, pagination_token, request) do
-      {:ok, response} -> response
-      {:error, exception} -> raise exception
-    end
+    get_notification_history(client, pagination_token, request) |> handle_bang_result()
   end
 
   @doc """
@@ -448,71 +488,195 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   """
   @spec get_app_transaction_info!(t(), String.t()) :: AppTransactionInfoResponse.t()
   def get_app_transaction_info!(client, transaction_id) do
-    case get_app_transaction_info(client, transaction_id) do
-      {:ok, response} -> response
+    get_app_transaction_info(client, transaction_id) |> handle_bang_result()
+  end
+
+  @doc """
+  Same as `extend_subscription_renewal_date/3` but raises `APIException` on error.
+  """
+  @spec extend_subscription_renewal_date!(t(), String.t(), ExtendRenewalDateRequest.t()) ::
+          ExtendRenewalDateResponse.t()
+  def extend_subscription_renewal_date!(client, original_transaction_id, request) do
+    extend_subscription_renewal_date(client, original_transaction_id, request)
+    |> handle_bang_result()
+  end
+
+  @doc """
+  Same as `extend_renewal_date_for_all_active_subscribers/2` but raises `APIException` on error.
+  """
+  @spec extend_renewal_date_for_all_active_subscribers!(t(), MassExtendRenewalDateRequest.t()) ::
+          MassExtendRenewalDateResponse.t()
+  def extend_renewal_date_for_all_active_subscribers!(client, request) do
+    extend_renewal_date_for_all_active_subscribers(client, request) |> handle_bang_result()
+  end
+
+  @doc """
+  Same as `get_status_of_subscription_renewal_date_extensions/3` but raises `APIException` on error.
+  """
+  @spec get_status_of_subscription_renewal_date_extensions!(t(), String.t(), String.t()) ::
+          MassExtendRenewalDateStatusResponse.t()
+  def get_status_of_subscription_renewal_date_extensions!(
+        client,
+        request_identifier,
+        product_id
+      ) do
+    get_status_of_subscription_renewal_date_extensions(client, request_identifier, product_id)
+    |> handle_bang_result()
+  end
+
+  @doc """
+  Same as `get_test_notification_status/2` but raises `APIException` on error.
+  """
+  @spec get_test_notification_status!(t(), String.t()) :: CheckTestNotificationResponse.t()
+  def get_test_notification_status!(client, test_notification_token) do
+    get_test_notification_status(client, test_notification_token) |> handle_bang_result()
+  end
+
+  @doc """
+  Same as `send_consumption_information/3` but raises `APIException` on error.
+  """
+  @spec send_consumption_information!(t(), String.t(), ConsumptionRequest.t()) :: :ok
+  def send_consumption_information!(client, transaction_id, request) do
+    send_consumption_information(client, transaction_id, request) |> handle_bang_result()
+  end
+
+  @doc """
+  Same as `set_app_account_token/3` but raises `APIException` on error.
+  """
+  @spec set_app_account_token!(t(), String.t(), UpdateAppAccountTokenRequest.t()) :: :ok
+  def set_app_account_token!(client, original_transaction_id, request) do
+    set_app_account_token(client, original_transaction_id, request) |> handle_bang_result()
+  end
+
+  # Retention Messaging Bang Functions
+
+  @doc """
+  Same as `upload_image/3` but raises `APIException` on error.
+
+  Raises `ArgumentError` if the image is not a valid PNG.
+  """
+  @spec upload_image!(t(), String.t(), binary()) :: :ok
+  def upload_image!(client, image_identifier, image) do
+    case upload_image(client, image_identifier, image) do
+      :ok -> :ok
+      {:error, :invalid_png} -> raise ArgumentError, "image must be a valid PNG file"
       {:error, exception} -> raise exception
     end
   end
 
-  # Private helper functions
-
-  defp get_base_url(:production), do: "https://api.storekit.itunes.apple.com"
-  defp get_base_url(:sandbox), do: "https://api.storekit-sandbox.itunes.apple.com"
-  defp get_base_url(:local_testing), do: "https://local-testing-base-url"
-
-  defp get_base_url(:xcode) do
-    raise ArgumentError, "Xcode is not a supported environment for an AppStoreServerAPIClient"
+  @doc """
+  Same as `delete_image/2` but raises `APIException` on error.
+  """
+  @spec delete_image!(t(), String.t()) :: :ok
+  def delete_image!(client, image_identifier) do
+    delete_image(client, image_identifier) |> handle_bang_result()
   end
 
-  defp get_base_url(_), do: raise(ArgumentError, "Invalid environment")
+  @doc """
+  Same as `get_image_list/1` but raises `APIException` on error.
+  """
+  @spec get_image_list!(t()) :: GetImageListResponse.t()
+  def get_image_list!(client) do
+    get_image_list(client) |> handle_bang_result()
+  end
+
+  @doc """
+  Same as `upload_message/3` but raises `APIException` on error.
+  """
+  @spec upload_message!(t(), String.t(), UploadMessageRequestBody.t()) :: :ok
+  def upload_message!(client, message_identifier, request) do
+    upload_message(client, message_identifier, request) |> handle_bang_result()
+  end
+
+  @doc """
+  Same as `delete_message/2` but raises `APIException` on error.
+  """
+  @spec delete_message!(t(), String.t()) :: :ok
+  def delete_message!(client, message_identifier) do
+    delete_message(client, message_identifier) |> handle_bang_result()
+  end
+
+  @doc """
+  Same as `get_message_list/1` but raises `APIException` on error.
+  """
+  @spec get_message_list!(t()) :: GetMessageListResponse.t()
+  def get_message_list!(client) do
+    get_message_list(client) |> handle_bang_result()
+  end
+
+  @doc """
+  Same as `configure_default_message/4` but raises `APIException` on error.
+  """
+  @spec configure_default_message!(t(), String.t(), String.t(), DefaultConfigurationRequest.t()) ::
+          :ok
+  def configure_default_message!(client, product_id, locale, request) do
+    configure_default_message(client, product_id, locale, request) |> handle_bang_result()
+  end
+
+  @doc """
+  Same as `delete_default_message/3` but raises `APIException` on error.
+  """
+  @spec delete_default_message!(t(), String.t(), String.t()) :: :ok
+  def delete_default_message!(client, product_id, locale) do
+    delete_default_message(client, product_id, locale) |> handle_bang_result()
+  end
+
+  # Private helper functions
+
+  defp handle_bang_result({:ok, response}), do: response
+  defp handle_bang_result(:ok), do: :ok
+  defp handle_bang_result({:error, exception}), do: raise(exception)
+
+  defp get_base_url(:production), do: {:ok, "https://api.storekit.itunes.apple.com"}
+  defp get_base_url(:sandbox), do: {:ok, "https://api.storekit-sandbox.itunes.apple.com"}
+  defp get_base_url(:local_testing), do: {:ok, "https://local-testing-base-url"}
+
+  defp get_base_url(:xcode) do
+    {:error, :xcode_not_supported}
+  end
+
+  defp get_base_url(_), do: {:error, :invalid_environment}
 
   defp build_history_params(revision, request) do
     %{}
-    |> maybe_put("revision", revision)
+    |> maybe_put("revision", revision, & &1)
     |> maybe_put("startDate", request.start_date, &to_string/1)
     |> maybe_put("endDate", request.end_date, &to_string/1)
-    |> maybe_put("productId", request.product_ids, &Enum.join(&1, ","))
-    |> maybe_put(
-      "productType",
-      request.product_types,
-      &Enum.map_join(&1, ",", fn pt -> TransactionHistoryRequest.product_type_to_string(pt) end)
-    )
-    |> maybe_put("sort", request.sort, &TransactionHistoryRequest.order_to_string/1)
-    |> maybe_put(
-      "subscriptionGroupIdentifier",
-      request.subscription_group_identifiers,
-      &Enum.join(&1, ",")
-    )
+    |> maybe_put("productId", request.product_ids, & &1)
+    |> maybe_put("productType", request.product_types, fn list ->
+      Enum.map(list, &ProductType.to_string/1)
+    end)
+    |> maybe_put("sort", request.sort, &Order.to_string/1)
+    |> maybe_put("subscriptionGroupIdentifier", request.subscription_group_identifiers, & &1)
     |> maybe_put(
       "inAppOwnershipType",
       request.in_app_ownership_type,
-      &TransactionHistoryRequest.in_app_ownership_type_to_string/1
+      &InAppOwnershipType.to_string/1
     )
-    |> maybe_put_if_not_nil("revoked", request.revoked, &to_string/1)
+    |> maybe_put("revoked", request.revoked, &to_string/1)
   end
-
-  defp maybe_put(params, _key, nil), do: params
-  defp maybe_put(params, key, value), do: Map.put(params, key, value)
 
   defp maybe_put(params, _key, nil, _transform), do: params
   defp maybe_put(params, key, value, transform), do: Map.put(params, key, transform.(value))
 
-  # Separate helper for fields where nil is distinct from unset (like revoked boolean)
-  defp maybe_put_if_not_nil(params, _key, nil, _transform), do: params
-
-  defp maybe_put_if_not_nil(params, key, value, transform),
-    do: Map.put(params, key, transform.(value))
-
-  defp make_request(client, method, path, params, body, response_module) do
+  defp make_request(
+         client,
+         method,
+         path,
+         params,
+         body,
+         response_module,
+         content_type \\ "application/json"
+       ) do
     metadata = %{method: method, path: path}
 
     Telemetry.span([:app_store_server_library, :api, :request], metadata, fn ->
       url = client.base_url <> path
-      headers = get_headers(client)
+      headers = get_headers(client) |> Map.put("Content-Type", content_type)
 
       case make_http_request(client, method, url, params, headers, body) do
         {:ok, status_code, response_body} when status_code in 200..299 ->
-          handle_success_response(response_body, response_module)
+          handle_success_response(response_body, response_module, status_code)
 
         {:ok, status_code, error_body} ->
           handle_error_response(status_code, error_body)
@@ -529,33 +693,11 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
     end)
   end
 
-  defp make_binary_request(client, method, path, binary_data, content_type) do
-    url = client.base_url <> path
-    headers = get_headers(client) |> Map.put("Content-Type", content_type)
-
-    case make_http_request(client, method, url, %{}, headers, binary_data) do
-      {:ok, status_code, _response_body} when status_code in 200..299 ->
-        :ok
-
-      {:ok, status_code, error_body} ->
-        handle_error_response(status_code, error_body)
-
-      {:error, status_code, error_body} when is_integer(status_code) ->
-        handle_error_response(status_code, error_body)
-
-      {:error, %APIException{} = exception} ->
-        {:error, exception}
-
-      {:error, reason} ->
-        {:error, APIException.new(0, nil, "Network error: #{inspect(reason)}")}
-    end
-  end
-
   defp get_headers(client) do
     token = get_or_generate_token(client)
 
     %{
-      "User-Agent" => @user_agent,
+      "User-Agent" => user_agent(),
       "Authorization" => "Bearer #{token}",
       "Accept" => "application/json",
       "Content-Type" => "application/json"
@@ -574,8 +716,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   defp generate_jwt_token(client) do
     Telemetry.span([:app_store_server_library, :jwt, :generate], %{}, fn ->
       now = System.system_time(:second)
-      # 5 minutes expiration (matching Apple's official libraries)
-      exp = now + 300
+      exp = now + client.jwt_expiration
 
       claims = %{
         "iss" => client.issuer_id,
@@ -598,14 +739,38 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
     end)
   end
 
-  defp make_http_request(_client, method, url, params, headers, body) do
+  defp make_http_request(client, method, url, params, headers, body) do
     req_headers = normalize_headers(headers)
-    req_options = [headers: req_headers, params: params]
+    url_with_params = append_query_params(url, params)
+
+    req_options = [
+      headers: req_headers,
+      connect_options: [timeout: client.connect_timeout],
+      receive_timeout: client.receive_timeout
+    ]
+
     body_options = body_options(body, req_options)
 
     method
-    |> dispatch_request(url, req_options, body_options)
+    |> dispatch_request(url_with_params, req_options, body_options)
     |> normalize_response()
+  end
+
+  defp append_query_params(url, params) when map_size(params) == 0, do: url
+
+  defp append_query_params(url, params) do
+    query_string =
+      params
+      |> Enum.flat_map(fn
+        {key, values} when is_list(values) ->
+          Enum.map(values, fn value -> {key, value} end)
+
+        {key, value} ->
+          [{key, value}]
+      end)
+      |> URI.encode_query()
+
+    "#{url}?#{query_string}"
   end
 
   defp normalize_headers(headers) do
@@ -640,38 +805,37 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
 
   defp normalize_response({:error, reason}), do: {:error, reason}
 
-  defp handle_success_response(_response_body, nil), do: :ok
+  defp handle_success_response(_response_body, nil, _status_code), do: :ok
 
-  defp handle_success_response(response_body, response_module) do
+  defp handle_success_response(response_body, response_module, status_code) do
     # Check if response_body is already a map (from Req) or a JSON string
     data =
       if is_map(response_body) do
-        response_body
+        {:ok, response_body}
       else
-        case Jason.decode(response_body) do
-          {:ok, decoded} -> decoded
-          {:error, _} -> %{}
-        end
+        Jason.decode(response_body)
       end
 
-    # Convert camelCase string keys to snake_case atom keys for struct creation
-    atom_data =
-      data
-      |> Enum.reduce(%{}, fn {k, v}, acc ->
-        case JSON.camel_to_snake_atom(k) do
-          atom_key when is_atom(atom_key) ->
-            Map.put(acc, atom_key, convert_field_value(atom_key, v))
+    case data do
+      {:ok, decoded} ->
+        # Convert camelCase string keys to snake_case atom keys for struct creation
+        atom_data =
+          decoded
+          |> reduce_to_atom_map(response_module)
+          |> add_raw_environment_field(decoded)
+          |> add_raw_status_field(decoded)
+          |> add_raw_first_send_attempt_result(decoded)
 
-          _ ->
-            log_unknown_key(k, response_module)
-            acc
-        end
-      end)
-      |> add_raw_environment_field(data)
-      |> add_raw_status_field(data)
-      |> add_raw_first_send_attempt_result(data)
+        {:ok, struct(response_module, atom_data)}
 
-    {:ok, struct(response_module, atom_data)}
+      {:error, reason} ->
+        {:error,
+         APIException.new(
+           status_code,
+           nil,
+           "Failed to decode API response body: #{inspect(reason)}"
+         )}
+    end
   end
 
   # Add raw_environment field when environment is present
@@ -707,10 +871,11 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   end
 
   defp convert_field_value(:image_state, value) when is_binary(value) do
-    case ImageState.from_string(value) do
-      {:ok, atom} -> atom
-      {:error, _} -> value
-    end
+    ImageState.from_string(value)
+  end
+
+  defp convert_field_value(:message_state, value) when is_binary(value) do
+    MessageState.from_string(value)
   end
 
   defp convert_field_value(:image_identifiers, value) when is_list(value) do
@@ -732,10 +897,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   end
 
   defp convert_field_value(:status, value) when is_integer(value) do
-    case OrderLookupStatus.from_integer(value) do
-      {:ok, atom} -> atom
-      {:error, _} -> value
-    end
+    OrderLookupStatus.from_integer(value)
   end
 
   defp convert_field_value(:send_attempts, value) when is_list(value) do
@@ -743,20 +905,21 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   end
 
   defp convert_field_value(:send_attempt_result, value) when is_binary(value) do
-    case SendAttemptResult.from_string(value) do
-      {:ok, atom} -> atom
-      {:error, _} -> value
-    end
+    SendAttemptResult.from_string(value)
   end
 
   defp convert_field_value(:first_send_attempt_result, value) when is_binary(value) do
-    case SendAttemptResult.from_string(value) do
-      {:ok, atom} -> atom
-      {:error, _} -> value
-    end
+    SendAttemptResult.from_string(value)
   end
 
   defp convert_field_value(_field_name, value), do: value
+
+  defp reduce_to_atom_map(data, _module) do
+    Enum.reduce(data, %{}, fn {k, v}, acc ->
+      atom_key = JSON.camel_to_snake_atom(k)
+      Map.put(acc, atom_key, convert_field_value(atom_key, v))
+    end)
+  end
 
   # Convert nested response objects to structs
   defp convert_nested_response(data, module) when is_map(data) do
@@ -764,16 +927,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
 
     atom_data =
       data
-      |> Enum.reduce(%{}, fn {k, v}, acc ->
-        case JSON.camel_to_snake_atom(k) do
-          atom_key when is_atom(atom_key) ->
-            Map.put(acc, atom_key, convert_field_value(atom_key, v))
-
-          _ ->
-            log_unknown_key(k, module)
-            acc
-        end
-      end)
+      |> reduce_to_atom_map(module)
       |> maybe_add_raw_send_attempt_result(module, data)
       |> maybe_add_raw_first_send_attempt_result(module, data)
 
@@ -831,11 +985,5 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
 
   defp handle_error_response(status_code, error_body) do
     {:error, APIException.new(status_code, nil, "Unknown error: #{inspect(error_body)}")}
-  end
-
-  defp log_unknown_key(key, context_module) do
-    Logger.debug(fn ->
-      "AppStoreServerLibrary: ignoring unknown response field #{inspect(key)} for #{inspect(context_module)}"
-    end)
   end
 end

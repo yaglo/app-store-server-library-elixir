@@ -139,7 +139,7 @@ defmodule AppStoreServerLibrary.TelemetryTest do
     test "signature verification emits telemetry events" do
       alias AppStoreServerLibrary.Verification.SignedDataVerifier
 
-      verifier =
+      {:ok, verifier} =
         SignedDataVerifier.new(
           root_certificates: [],
           environment: :local_testing,

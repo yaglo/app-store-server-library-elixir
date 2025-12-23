@@ -7,7 +7,7 @@ defmodule AppStoreServerLibrary.Models.GetImageListResponseItem do
 
   alias AppStoreServerLibrary.Models.ImageState
 
-  @type t() :: %__MODULE__{
+  @type t :: %__MODULE__{
           image_identifier: String.t() | nil,
           image_state: ImageState.t() | nil,
           raw_image_state: String.t() | nil

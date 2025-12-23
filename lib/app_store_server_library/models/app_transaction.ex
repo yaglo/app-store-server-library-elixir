@@ -9,7 +9,7 @@ defmodule AppStoreServerLibrary.Models.AppTransaction do
   alias AppStoreServerLibrary.Models.PurchasePlatform
   alias AppStoreServerLibrary.Verification.Validator
 
-  @type t() :: %__MODULE__{
+  @type t :: %__MODULE__{
           receipt_type: Environment.t() | nil,
           raw_receipt_type: String.t() | nil,
           app_apple_id: integer() | nil,

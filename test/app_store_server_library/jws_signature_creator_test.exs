@@ -1,40 +1,61 @@
 defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
   use ExUnit.Case, async: true
 
-  alias AppStoreServerLibrary.Signature.{
-    AdvancedCommerceAPIInAppSignatureCreator,
-    IntroductoryOfferEligibilitySignatureCreator,
-    PromotionalOfferV2SignatureCreator
-  }
+  alias AppStoreServerLibrary.Signature.JWSSignatureCreator
 
-  alias AppStoreServerLibrary.Signature.AdvancedCommerceAPIInAppRequest
+  describe "new/1" do
+    test "creates creator with valid PEM" do
+      signing_key = File.read!("test/resources/certs/testSigningKey.p8")
 
-  defmodule TestInAppRequest do
-    @moduledoc false
-    defstruct [:test_value]
+      assert {:ok, creator} =
+               JWSSignatureCreator.new(
+                 signing_key: signing_key,
+                 key_id: "keyId",
+                 issuer_id: "issuerId",
+                 bundle_id: "bundleId"
+               )
 
-    @behaviour AdvancedCommerceAPIInAppRequest
+      assert creator.signing_key == signing_key
+      assert creator.key_id == "keyId"
+      assert creator.issuer_id == "issuerId"
+      assert creator.bundle_id == "bundleId"
+    end
 
-    @impl true
-    def to_map(%__MODULE__{test_value: value}) do
-      %{"test_value" => value}
+    test "returns error with invalid PEM" do
+      assert {:error, :invalid_pem} =
+               JWSSignatureCreator.new(
+                 signing_key: "not a valid PEM",
+                 key_id: "keyId",
+                 issuer_id: "issuerId",
+                 bundle_id: "bundleId"
+               )
+    end
+
+    test "returns error with empty PEM" do
+      assert {:error, :invalid_pem} =
+               JWSSignatureCreator.new(
+                 signing_key: "",
+                 key_id: "keyId",
+                 issuer_id: "issuerId",
+                 bundle_id: "bundleId"
+               )
     end
   end
 
-  describe "PromotionalOfferV2SignatureCreator" do
+  describe "create_promotional_offer_v2_signature/4" do
     test "creates signature with all parameters" do
       signing_key = File.read!("test/resources/certs/testSigningKey.p8")
 
-      creator =
-        PromotionalOfferV2SignatureCreator.new(
+      {:ok, creator} =
+        JWSSignatureCreator.new(
           signing_key: signing_key,
           key_id: "keyId",
           issuer_id: "issuerId",
           bundle_id: "bundleId"
         )
 
-      {:ok, signature} =
-        PromotionalOfferV2SignatureCreator.create_signature(
+      signature =
+        JWSSignatureCreator.create_promotional_offer_v2_signature(
           creator,
           "productId",
           "offerIdentifier",
@@ -68,16 +89,16 @@ defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
     test "creates signature without transaction_id" do
       signing_key = File.read!("test/resources/certs/testSigningKey.p8")
 
-      creator =
-        PromotionalOfferV2SignatureCreator.new(
+      {:ok, creator} =
+        JWSSignatureCreator.new(
           signing_key: signing_key,
           key_id: "keyId",
           issuer_id: "issuerId",
           bundle_id: "bundleId"
         )
 
-      {:ok, signature} =
-        PromotionalOfferV2SignatureCreator.create_signature(
+      signature =
+        JWSSignatureCreator.create_promotional_offer_v2_signature(
           creator,
           "productId",
           "offerIdentifier",
@@ -94,19 +115,19 @@ defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
       refute Map.has_key?(payload, "transactionId")
     end
 
-    test "raises error when offer_identifier is missing" do
+    test "raises FunctionClauseError when offer_identifier is not a string" do
       signing_key = File.read!("test/resources/certs/testSigningKey.p8")
 
-      creator =
-        PromotionalOfferV2SignatureCreator.new(
+      {:ok, creator} =
+        JWSSignatureCreator.new(
           signing_key: signing_key,
           key_id: "keyId",
           issuer_id: "issuerId",
           bundle_id: "bundleId"
         )
 
-      assert_raise ArgumentError, fn ->
-        PromotionalOfferV2SignatureCreator.create_signature(
+      assert_raise FunctionClauseError, fn ->
+        JWSSignatureCreator.create_promotional_offer_v2_signature(
           creator,
           "productId",
           nil,
@@ -115,19 +136,19 @@ defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
       end
     end
 
-    test "raises error when product_id is missing" do
+    test "raises FunctionClauseError when product_id is not a string" do
       signing_key = File.read!("test/resources/certs/testSigningKey.p8")
 
-      creator =
-        PromotionalOfferV2SignatureCreator.new(
+      {:ok, creator} =
+        JWSSignatureCreator.new(
           signing_key: signing_key,
           key_id: "keyId",
           issuer_id: "issuerId",
           bundle_id: "bundleId"
         )
 
-      assert_raise ArgumentError, fn ->
-        PromotionalOfferV2SignatureCreator.create_signature(
+      assert_raise FunctionClauseError, fn ->
+        JWSSignatureCreator.create_promotional_offer_v2_signature(
           creator,
           nil,
           "offerIdentifier",
@@ -137,20 +158,20 @@ defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
     end
   end
 
-  describe "IntroductoryOfferEligibilitySignatureCreator" do
+  describe "create_introductory_offer_eligibility_signature/4" do
     test "creates signature with all parameters" do
       signing_key = File.read!("test/resources/certs/testSigningKey.p8")
 
-      creator =
-        IntroductoryOfferEligibilitySignatureCreator.new(
+      {:ok, creator} =
+        JWSSignatureCreator.new(
           signing_key: signing_key,
           key_id: "keyId",
           issuer_id: "issuerId",
           bundle_id: "bundleId"
         )
 
-      {:ok, signature} =
-        IntroductoryOfferEligibilitySignatureCreator.create_signature(
+      signature =
+        JWSSignatureCreator.create_introductory_offer_eligibility_signature(
           creator,
           "productId",
           true,
@@ -181,19 +202,19 @@ defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
       assert payload["transactionId"] == "transactionId"
     end
 
-    test "raises error when transaction_id is missing" do
+    test "raises FunctionClauseError when transaction_id is not a string" do
       signing_key = File.read!("test/resources/certs/testSigningKey.p8")
 
-      creator =
-        IntroductoryOfferEligibilitySignatureCreator.new(
+      {:ok, creator} =
+        JWSSignatureCreator.new(
           signing_key: signing_key,
           key_id: "keyId",
           issuer_id: "issuerId",
           bundle_id: "bundleId"
         )
 
-      assert_raise ArgumentError, fn ->
-        IntroductoryOfferEligibilitySignatureCreator.create_signature(
+      assert_raise FunctionClauseError, fn ->
+        JWSSignatureCreator.create_introductory_offer_eligibility_signature(
           creator,
           "productId",
           true,
@@ -202,19 +223,19 @@ defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
       end
     end
 
-    test "raises error when allow_introductory_offer is missing" do
+    test "raises FunctionClauseError when allow_introductory_offer is not a boolean" do
       signing_key = File.read!("test/resources/certs/testSigningKey.p8")
 
-      creator =
-        IntroductoryOfferEligibilitySignatureCreator.new(
+      {:ok, creator} =
+        JWSSignatureCreator.new(
           signing_key: signing_key,
           key_id: "keyId",
           issuer_id: "issuerId",
           bundle_id: "bundleId"
         )
 
-      assert_raise ArgumentError, fn ->
-        IntroductoryOfferEligibilitySignatureCreator.create_signature(
+      assert_raise FunctionClauseError, fn ->
+        JWSSignatureCreator.create_introductory_offer_eligibility_signature(
           creator,
           "productId",
           nil,
@@ -223,19 +244,19 @@ defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
       end
     end
 
-    test "raises error when product_id is missing" do
+    test "raises FunctionClauseError when product_id is not a string" do
       signing_key = File.read!("test/resources/certs/testSigningKey.p8")
 
-      creator =
-        IntroductoryOfferEligibilitySignatureCreator.new(
+      {:ok, creator} =
+        JWSSignatureCreator.new(
           signing_key: signing_key,
           key_id: "keyId",
           issuer_id: "issuerId",
           bundle_id: "bundleId"
         )
 
-      assert_raise ArgumentError, fn ->
-        IntroductoryOfferEligibilitySignatureCreator.create_signature(
+      assert_raise FunctionClauseError, fn ->
+        JWSSignatureCreator.create_introductory_offer_eligibility_signature(
           creator,
           nil,
           true,
@@ -245,22 +266,21 @@ defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
     end
   end
 
-  describe "AdvancedCommerceAPIInAppSignatureCreator" do
-    test "creates signature with request" do
+  describe "create_advanced_commerce_signature/2" do
+    test "creates signature from map" do
       signing_key = File.read!("test/resources/certs/testSigningKey.p8")
 
-      creator =
-        AdvancedCommerceAPIInAppSignatureCreator.new(
+      {:ok, creator} =
+        JWSSignatureCreator.new(
           signing_key: signing_key,
           key_id: "keyId",
           issuer_id: "issuerId",
           bundle_id: "bundleId"
         )
 
-      request = %TestInAppRequest{test_value: "testValue"}
+      request_map = %{"test_value" => "testValue"}
 
-      {:ok, signature} =
-        AdvancedCommerceAPIInAppSignatureCreator.create_signature(creator, request)
+      signature = JWSSignatureCreator.create_advanced_commerce_signature(creator, request_map)
 
       assert is_binary(signature)
 
@@ -284,23 +304,23 @@ defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
 
       # Verify request is properly encoded
       assert Map.has_key?(payload, "request")
-      request_data = Base.url_decode64!(payload["request"], padding: false) |> Jason.decode!()
+      request_data = Base.decode64!(payload["request"]) |> Jason.decode!()
       assert request_data["test_value"] == "testValue"
     end
 
-    test "raises error when request is missing" do
+    test "raises FunctionClauseError when request is not a map" do
       signing_key = File.read!("test/resources/certs/testSigningKey.p8")
 
-      creator =
-        AdvancedCommerceAPIInAppSignatureCreator.new(
+      {:ok, creator} =
+        JWSSignatureCreator.new(
           signing_key: signing_key,
           key_id: "keyId",
           issuer_id: "issuerId",
           bundle_id: "bundleId"
         )
 
-      assert_raise ArgumentError, fn ->
-        AdvancedCommerceAPIInAppSignatureCreator.create_signature(creator, nil)
+      assert_raise FunctionClauseError, fn ->
+        JWSSignatureCreator.create_advanced_commerce_signature(creator, nil)
       end
     end
   end

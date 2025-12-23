@@ -6,12 +6,10 @@
 
 Elixir client for Apple's [App Store Server API](https://developer.apple.com/documentation/appstoreserverapi), [Server Notifications](https://developer.apple.com/documentation/appstoreservernotifications), and [Retention Messaging](https://developer.apple.com/documentation/retentionmessaging).
 
-Tracks Apple's official Python implementation—same surface area, idiomatic Elixir.
-
 ## Installation
 ```elixir
 def deps do
-  [{:app_store_server_library, "~> 1.0"}]
+  [{:app_store_server_library, "~> 2.0"}]
 end
 ```
 
@@ -30,8 +28,9 @@ See [Creating API keys to authorize API requests](https://developer.apple.com/do
 ## Making API Calls
 ```elixir
 alias AppStoreServerLibrary.Client
+alias AppStoreServerLibrary.Models.{ConsumptionRequest, TransactionHistoryRequest}
 
-client = Client.new(
+{:ok, client} = Client.new(
   signing_key: File.read!("AuthKey_XXXXXXXXXX.p8"),
   key_id: "YOUR_KEY_ID",
   issuer_id: "YOUR_ISSUER_ID",
@@ -48,10 +47,11 @@ client = Client.new(
 # Refund history
 {:ok, refunds} = Client.get_refund_history(client, "txn_id")
 
-# Send consumption data
-Client.send_consumption_data(client, "txn_id", %ConsumptionRequest{
-  customerConsented: true,
-  consumptionStatus: :undeclared
+# Send consumption data (V2 API)
+Client.send_consumption_information(client, "txn_id", %ConsumptionRequest{
+  customer_consented: true,
+  delivery_status: :delivered,
+  sample_content_provided: false
 })
 ```
 
@@ -63,7 +63,7 @@ Verify transactions and notifications from Apple. You'll need Apple's root certi
 ```elixir
 alias AppStoreServerLibrary.Verifier
 
-verifier = Verifier.new(
+{:ok, verifier} = Verifier.new(
   root_certificates: [File.read!("AppleRootCA-G3.cer")],
   enable_online_checks: true,  # OCSP verification
   environment: :sandbox,
@@ -146,6 +146,7 @@ alias AppStoreServerLibrary.Utility.ReceiptUtility
 
 ## Error Handling
 ```elixir
+alias AppStoreServerLibrary.Client
 alias AppStoreServerLibrary.API.APIException
 
 case Client.get_transaction_info(client, "bad_id") do
@@ -164,6 +165,24 @@ case Client.get_transaction_info(client, "bad_id") do
     end
 end
 ```
+
+## Testing
+
+Run the suite (OCSP live checks excluded by default):
+```bash
+mix test
+```
+
+To exercise real OCSP responders and Apple certificates, opt in to the live tag (requires outbound network):
+```bash
+mix test --include ocsp_live --include real_apple
+```
+
+Inject a custom OCSP requester for tests by setting:
+```elixir
+config :app_store_server_library, :ocsp_requester, MyOCSPMock
+```
+where `MyOCSPMock.send_ocsp_request/2` returns `{:ok, body}` or an error tuple.
 
 ## Environments
 

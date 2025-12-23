@@ -27,7 +27,7 @@ defmodule AppStoreServerLibrary.ReceiptUtilityTest do
     test "returns error for invalid base64" do
       result = ReceiptUtility.extract_transaction_id_from_app_receipt("not-valid-base64!!!")
 
-      assert {:error, :invalid_receipt_format} = result
+      assert {:error, :invalid_base64} = result
     end
 
     # Note: These tests use catch_exit because :asn1rt_nif.decode_ber_tlv exits on invalid data
@@ -115,7 +115,7 @@ defmodule AppStoreServerLibrary.ReceiptUtilityTest do
       result =
         ReceiptUtility.extract_transaction_id_from_transaction_receipt("not-valid-base64!!!")
 
-      assert {:error, :invalid_receipt_format} = result
+      assert {:error, :invalid_base64} = result
     end
 
     test "extracts transaction-id from properly formatted receipt" do

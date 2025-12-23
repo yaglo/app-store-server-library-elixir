@@ -13,7 +13,7 @@ defmodule AppStoreServerLibrary.PromotionalOfferSignatureCreatorTest do
 
   describe "create_signature/6" do
     test "creates a valid signature" do
-      creator =
+      {:ok, creator} =
         PromotionalOfferSignatureCreator.new(
           signing_key: @test_signing_key,
           key_id: "keyId",
@@ -44,7 +44,7 @@ defmodule AppStoreServerLibrary.PromotionalOfferSignatureCreatorTest do
       # Note: ECDSA signatures are non-deterministic by design.
       # Each call produces a different but equally valid signature.
       # This test verifies both signatures are valid, not that they're identical.
-      creator =
+      {:ok, creator} =
         PromotionalOfferSignatureCreator.new(
           signing_key: @test_signing_key,
           key_id: "keyId",
@@ -84,7 +84,7 @@ defmodule AppStoreServerLibrary.PromotionalOfferSignatureCreatorTest do
     end
 
     test "creates different signatures for different inputs" do
-      creator =
+      {:ok, creator} =
         PromotionalOfferSignatureCreator.new(
           signing_key: @test_signing_key,
           key_id: "keyId",
@@ -118,7 +118,7 @@ defmodule AppStoreServerLibrary.PromotionalOfferSignatureCreatorTest do
     end
 
     test "handles empty application username" do
-      creator =
+      {:ok, creator} =
         PromotionalOfferSignatureCreator.new(
           signing_key: @test_signing_key,
           key_id: "keyId",
@@ -148,7 +148,7 @@ defmodule AppStoreServerLibrary.PromotionalOfferSignatureCreatorTest do
       # Since ECDSA is non-deterministic, we can't compare signatures directly.
       # Instead, we verify both produce valid signatures (meaning the normalization
       # doesn't cause errors).
-      creator =
+      {:ok, creator} =
         PromotionalOfferSignatureCreator.new(
           signing_key: @test_signing_key,
           key_id: "keyId",
@@ -187,7 +187,7 @@ defmodule AppStoreServerLibrary.PromotionalOfferSignatureCreatorTest do
     test "handles uppercase application username by converting to lowercase" do
       # The signature creator normalizes application usernames to lowercase.
       # Since ECDSA is non-deterministic, we verify both produce valid signatures.
-      creator =
+      {:ok, creator} =
         PromotionalOfferSignatureCreator.new(
           signing_key: @test_signing_key,
           key_id: "keyId",
@@ -225,14 +225,14 @@ defmodule AppStoreServerLibrary.PromotionalOfferSignatureCreatorTest do
     end
 
     test "creates different signatures for different bundle IDs" do
-      creator1 =
+      {:ok, creator1} =
         PromotionalOfferSignatureCreator.new(
           signing_key: @test_signing_key,
           key_id: "keyId",
           bundle_id: "bundleId1"
         )
 
-      creator2 =
+      {:ok, creator2} =
         PromotionalOfferSignatureCreator.new(
           signing_key: @test_signing_key,
           key_id: "keyId",
@@ -266,14 +266,14 @@ defmodule AppStoreServerLibrary.PromotionalOfferSignatureCreatorTest do
     end
 
     test "creates different signatures for different key IDs" do
-      creator1 =
+      {:ok, creator1} =
         PromotionalOfferSignatureCreator.new(
           signing_key: @test_signing_key,
           key_id: "keyId1",
           bundle_id: "bundleId"
         )
 
-      creator2 =
+      {:ok, creator2} =
         PromotionalOfferSignatureCreator.new(
           signing_key: @test_signing_key,
           key_id: "keyId2",
@@ -304,6 +304,48 @@ defmodule AppStoreServerLibrary.PromotionalOfferSignatureCreatorTest do
         )
 
       assert signature1 != signature2
+    end
+
+    test "returns error for zero timestamp" do
+      {:ok, creator} =
+        PromotionalOfferSignatureCreator.new(
+          signing_key: @test_signing_key,
+          key_id: "keyId",
+          bundle_id: "bundleId"
+        )
+
+      uuid = "20fba8a0-2b80-4a7d-a17f-85c1854727f8"
+
+      assert {:error, {:invalid_timestamp, _message}} =
+               PromotionalOfferSignatureCreator.create_signature(
+                 creator,
+                 "productId",
+                 "offerId",
+                 "appAccountToken",
+                 uuid,
+                 0
+               )
+    end
+
+    test "returns error for negative timestamp" do
+      {:ok, creator} =
+        PromotionalOfferSignatureCreator.new(
+          signing_key: @test_signing_key,
+          key_id: "keyId",
+          bundle_id: "bundleId"
+        )
+
+      uuid = "20fba8a0-2b80-4a7d-a17f-85c1854727f8"
+
+      assert {:error, {:invalid_timestamp, _message}} =
+               PromotionalOfferSignatureCreator.create_signature(
+                 creator,
+                 "productId",
+                 "offerId",
+                 "appAccountToken",
+                 uuid,
+                 -1_698_148_900_000
+               )
     end
   end
 end

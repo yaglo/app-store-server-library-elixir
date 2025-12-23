@@ -20,19 +20,24 @@ defmodule AppStoreServerLibrary.Cache.TokenCache do
   ## Configuration
 
       config :app_store_server_library,
-        token_cache_ttl_seconds: 240  # 4 minutes (tokens expire at 5 min)
+        token_cache_ttl_seconds: 240,  # 4 minutes (tokens expire at 5 min)
+        token_cache_max_size: 100      # Maximum number of cached tokens
   """
 
   use GenServer
 
+  import AppStoreServerLibrary.Cache.CacheUtils
+
   # JWT expires after 5 minutes, cache for 4 minutes (60 second safety margin)
   @default_ttl_seconds 4 * 60
+  @default_max_size 100
 
   # Client API
 
   @doc """
   Starts the token cache.
   """
+  @spec start_link(Keyword.t()) :: GenServer.on_start()
   def start_link(opts \\ []) do
     name = Keyword.get(opts, :name, __MODULE__)
     GenServer.start_link(__MODULE__, opts, name: name)
@@ -86,7 +91,7 @@ defmodule AppStoreServerLibrary.Cache.TokenCache do
   @doc """
   Returns the current cache stats.
   """
-  @spec stats(GenServer.server()) :: %{size: non_neg_integer()}
+  @spec stats(GenServer.server()) :: %{size: non_neg_integer(), max_size: pos_integer()}
   def stats(server \\ __MODULE__) do
     GenServer.call(server, :stats)
   end
@@ -102,9 +107,17 @@ defmodule AppStoreServerLibrary.Cache.TokenCache do
         @default_ttl_seconds
       )
 
+    max_size =
+      Application.get_env(
+        :app_store_server_library,
+        :token_cache_max_size,
+        @default_max_size
+      )
+
     state = %{
       cache: %{},
-      ttl_seconds: ttl_seconds
+      ttl_seconds: ttl_seconds,
+      max_size: max_size
     }
 
     {:ok, state}
@@ -123,7 +136,9 @@ defmodule AppStoreServerLibrary.Cache.TokenCache do
         # No token or expired - generate new one
         token = generate_fn.()
         expiration = now + state.ttl_seconds
-        new_cache = Map.put(state.cache, client_key, {token, expiration})
+
+        cache = ensure_capacity(state.cache, state.max_size, now)
+        new_cache = Map.put(cache, client_key, {token, expiration})
         {:reply, token, %{state | cache: new_cache}}
     end
   end
@@ -135,7 +150,11 @@ defmodule AppStoreServerLibrary.Cache.TokenCache do
 
   @impl true
   def handle_call(:stats, _from, state) do
-    stats = %{size: map_size(state.cache)}
+    stats = %{
+      size: map_size(state.cache),
+      max_size: state.max_size
+    }
+
     {:reply, stats, state}
   end
 

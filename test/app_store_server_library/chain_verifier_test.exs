@@ -16,6 +16,20 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
 
   alias AppStoreServerLibrary.Verification.ChainVerifier
 
+  setup tags do
+    original = Application.get_env(:app_store_server_library, :ocsp_requester)
+
+    if tags[:ocsp_live] do
+      Application.delete_env(:app_store_server_library, :ocsp_requester)
+    end
+
+    on_exit(fn ->
+      Application.put_env(:app_store_server_library, :ocsp_requester, original)
+    end)
+
+    :ok
+  end
+
   # Test certificates - same as Python test suite
   @root_ca_base64 "MIIBgjCCASmgAwIBAgIJALUc5ALiH5pbMAoGCCqGSM49BAMDMDYxCzAJBgNVBAYTAlVTMRMwEQYDVQQIDApDYWxpZm9ybmlhMRIwEAYDVQQHDAlDdXBlcnRpbm8wHhcNMjMwMTA1MjEzMDIyWhcNMzMwMTAyMjEzMDIyWjA2MQswCQYDVQQGEwJVUzETMBEGA1UECAwKQ2FsaWZvcm5pYTESMBAGA1UEBwwJQ3VwZXJ0aW5vMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEc+/Bl+gospo6tf9Z7io5tdKdrlN1YdVnqEhEDXDShzdAJPQijamXIMHf8xWWTa1zgoYTxOKpbuJtDplz1XriTaMgMB4wDAYDVR0TBAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwCgYIKoZIzj0EAwMDRwAwRAIgemWQXnMAdTad2JDJWng9U4uBBL5mA7WI05H7oH7c6iQCIHiRqMjNfzUAyiu9h6rOU/K+iTR0I/3Y/NSWsXHX+acc"
   @intermediate_ca_base64 "MIIBnzCCAUWgAwIBAgIBCzAKBggqhkjOPQQDAzA2MQswCQYDVQQGEwJVUzETMBEGA1UECAwKQ2FsaWZvcm5pYTESMBAGA1UEBwwJQ3VwZXJ0aW5vMB4XDTIzMDEwNTIxMzEwNVoXDTMzMDEwMTIxMzEwNVowRTELMAkGA1UEBhMCVVMxCzAJBgNVBAgMAkNBMRIwEAYDVQQHDAlDdXBlcnRpbm8xFTATBgNVBAoMDEludGVybWVkaWF0ZTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABBUN5V9rKjfRiMAIojEA0Av5Mp0oF+O0cL4gzrTF178inUHugj7Et46NrkQ7hKgMVnjogq45Q1rMs+cMHVNILWqjNTAzMA8GA1UdEwQIMAYBAf8CAQAwDgYDVR0PAQH/BAQDAgEGMBAGCiqGSIb3Y2QGAgEEAgUAMAoGCCqGSM49BAMDA0gAMEUCIQCmsIKYs41ullssHX4rVveUT0Z7Is5/hLK1lFPTtun3hAIgc2+2RG5+gNcFVcs+XJeEl4GZ+ojl3ROOmll+ye7dynQ="
@@ -73,7 +87,7 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
           @effective_date
         )
 
-      assert {:error, {:verification_failure, message}} = result
+      assert {:error, {:invalid_chain, message}} = result
       assert message =~ "not in trusted roots"
     end
 
@@ -159,6 +173,7 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
 
     @tag :real_apple
     @tag :strict
+    @tag :ocsp_live
     test "real Apple chain validates with OCSP enabled" do
       real_apple_root_der = Base.decode64!(@real_apple_root_base64)
       verifier = ChainVerifier.new([real_apple_root_der], true)
@@ -200,7 +215,7 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
           @effective_date
         )
 
-      assert {:error, {:verification_failure, message}} = result
+      assert {:error, {:invalid_chain, message}} = result
       assert message =~ "signature" or message =~ "issuer"
     end
   end
@@ -314,7 +329,7 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
           @effective_date
         )
 
-      assert {:error, :invalid_chain_length} = result
+      assert {:error, {:invalid_chain_length, _message}} = result
     end
 
     test "chain too long fails" do
@@ -334,7 +349,7 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
           @effective_date
         )
 
-      assert {:error, :invalid_chain_length} = result
+      assert {:error, {:invalid_chain_length, _message}} = result
     end
 
     test "chain with exactly 3 certificates succeeds" do
@@ -366,7 +381,7 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
           @effective_date
         )
 
-      assert {:error, :invalid_certificate} = result
+      assert {:error, {:invalid_certificate, _message}} = result
     end
 
     test "invalid certificate data fails" do
@@ -401,7 +416,7 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
           @effective_date
         )
 
-      assert {:error, :invalid_certificate} = result
+      assert {:error, {:invalid_certificate, _message}} = result
     end
 
     test "malformed root certificate fails" do
@@ -504,7 +519,7 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
           @effective_date
         )
 
-      assert {:error, {:verification_failure, _message}} = result
+      assert {:error, {:invalid_chain, _message}} = result
     end
 
     test "non-strict mode bypasses OID verification" do
@@ -820,7 +835,7 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
           @effective_date
         )
 
-      assert {:error, {:verification_failure, message}} = result
+      assert {:error, {:invalid_chain, message}} = result
       assert message =~ "signature" or message =~ "issuer"
     end
   end

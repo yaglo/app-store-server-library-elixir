@@ -21,7 +21,8 @@ defmodule AppStoreServerLibrary.XcodeSignedDataTest do
     ]
 
     opts = if app_apple_id, do: Keyword.put(opts, :app_apple_id, app_apple_id), else: opts
-    SignedDataVerifier.new(opts)
+    {:ok, verifier} = SignedDataVerifier.new(opts)
+    verifier
   end
 
   describe "Xcode signed app transaction" do

@@ -29,42 +29,6 @@ defmodule AppStoreServerLibrary.Verification.Validator do
     end
   end
 
-  @spec optional_integer(map(), String.t()) :: :ok | error()
-  def optional_integer(map, key) do
-    map = string_key_map(map)
-    value = Map.get(map, key)
-
-    if is_nil(value) or integerish?(value) do
-      :ok
-    else
-      {:error, {:verification_failure, "Invalid integer field: #{key}"}}
-    end
-  end
-
-  @spec optional_string(map(), String.t()) :: :ok | error()
-  def optional_string(map, key) do
-    map = string_key_map(map)
-    value = Map.get(map, key)
-
-    if is_nil(value) or is_binary(value) do
-      :ok
-    else
-      {:error, {:verification_failure, "Invalid string field: #{key}"}}
-    end
-  end
-
-  @spec optional_list(map(), String.t()) :: :ok | error()
-  def optional_list(map, key) do
-    map = string_key_map(map)
-    value = Map.get(map, key)
-
-    if is_nil(value) or is_list(value) do
-      :ok
-    else
-      {:error, {:verification_failure, "Invalid list field: #{key}"}}
-    end
-  end
-
   @spec optional_string_list(map(), String.t()) :: :ok | error()
   def optional_string_list(map, key) do
     map = string_key_map(map)
@@ -83,7 +47,7 @@ defmodule AppStoreServerLibrary.Verification.Validator do
   end
 
   @type field_type ::
-          :string | :integer | :number | :boolean | :list | :atom | :atom_or_string | :map
+          :string | :integer | :number | :boolean | :list | :atom | :atom_or_string | :map | :any
 
   @doc """
   Validates that optional fields match the expected type when present.
@@ -105,6 +69,7 @@ defmodule AppStoreServerLibrary.Verification.Validator do
     end)
   end
 
+  defp valid_type?(_value, :any), do: true
   defp valid_type?(value, :string), do: is_binary(value)
   defp valid_type?(value, :integer), do: is_integer(value)
   defp valid_type?(value, :number), do: is_number(value)
@@ -115,6 +80,7 @@ defmodule AppStoreServerLibrary.Verification.Validator do
   defp valid_type?(value, :map), do: is_map(value)
   defp valid_type?(_value, _type), do: false
 
+  defp field_type_label(:any), do: "any"
   defp field_type_label(:atom_or_string), do: "atom or string"
   defp field_type_label(:integer), do: "integer"
   defp field_type_label(:boolean), do: "boolean"
@@ -139,26 +105,6 @@ defmodule AppStoreServerLibrary.Verification.Validator do
 
       true ->
         {:error, {:verification_failure, "Invalid enum field: #{key}"}}
-    end
-  end
-
-  @doc """
-  Validates that an optional list field has all elements contained in the allowed set.
-  """
-  @spec optional_enum_list(map(), String.t() | atom(), [atom() | String.t()]) :: :ok | error()
-  def optional_enum_list(map, key, allowed) do
-    map = string_key_map(map)
-    value = Map.get(map, to_string(key))
-
-    cond do
-      is_nil(value) ->
-        :ok
-
-      is_list(value) and Enum.all?(value, &enum_member?(&1, allowed)) ->
-        :ok
-
-      true ->
-        {:error, {:verification_failure, "Invalid enum list field: #{key}"}}
     end
   end
 

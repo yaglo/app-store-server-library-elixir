@@ -1,7 +1,7 @@
 defmodule AppStoreServerLibrary.MixProject do
   use Mix.Project
 
-  @version "1.0.0"
+  @version "2.0.0"
   @source_url "https://github.com/yaglo/app-store-server-library-elixir"
 
   def project do
@@ -28,11 +28,7 @@ defmodule AppStoreServerLibrary.MixProject do
   end
 
   defp description do
-    """
-    Elixir client library for Apple App Store Server API.
-    Provides full feature parity with Apple's official libraries including
-    JWT signing, JWS verification, receipt parsing, and all API endpoints.
-    """
+    "Elixir client for Apple App Store Server API, Server Notifications, and Retention Messaging."
   end
 
   defp package do

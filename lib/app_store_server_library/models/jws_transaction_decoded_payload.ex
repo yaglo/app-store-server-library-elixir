@@ -7,11 +7,13 @@ defmodule AppStoreServerLibrary.Models.JWSTransactionDecodedPayload do
   """
 
   alias AppStoreServerLibrary.Models.{
+    AdvancedCommerceTransactionInfo,
     Environment,
     InAppOwnershipType,
     OfferDiscountType,
     OfferType,
     RevocationReason,
+    RevocationType,
     TransactionReason,
     Type
   }
@@ -38,6 +40,9 @@ defmodule AppStoreServerLibrary.Models.JWSTransactionDecodedPayload do
           revocation_reason: RevocationReason.t() | nil,
           raw_revocation_reason: integer() | nil,
           revocation_date: integer() | nil,
+          revocation_type: RevocationType.t() | nil,
+          raw_revocation_type: String.t() | nil,
+          revocation_percentage: integer() | nil,
           is_upgraded: boolean() | nil,
           offer_type: OfferType.t() | nil,
           raw_offer_type: integer() | nil,
@@ -53,7 +58,9 @@ defmodule AppStoreServerLibrary.Models.JWSTransactionDecodedPayload do
           offer_discount_type: OfferDiscountType.t() | nil,
           raw_offer_discount_type: String.t() | nil,
           app_transaction_id: String.t() | nil,
-          offer_period: String.t() | nil
+          offer_period: String.t() | nil,
+          advanced_commerce_info: AdvancedCommerceTransactionInfo.t() | nil,
+          previous_original_transaction_id: String.t() | nil
         }
 
   defstruct [
@@ -76,6 +83,9 @@ defmodule AppStoreServerLibrary.Models.JWSTransactionDecodedPayload do
     :revocation_reason,
     :raw_revocation_reason,
     :revocation_date,
+    :revocation_type,
+    :raw_revocation_type,
+    :revocation_percentage,
     :is_upgraded,
     :offer_type,
     :raw_offer_type,
@@ -91,7 +101,9 @@ defmodule AppStoreServerLibrary.Models.JWSTransactionDecodedPayload do
     :offer_discount_type,
     :raw_offer_discount_type,
     :app_transaction_id,
-    :offer_period
+    :offer_period,
+    :advanced_commerce_info,
+    :previous_original_transaction_id
   ]
 
   @type_allowed [
@@ -118,6 +130,15 @@ defmodule AppStoreServerLibrary.Models.JWSTransactionDecodedPayload do
     "PAY_AS_YOU_GO",
     "PAY_UP_FRONT",
     "ONE_TIME"
+  ]
+
+  @revocation_type_allowed [
+    :refund_full,
+    :refund_prorated,
+    :family_revoke,
+    "REFUND_FULL",
+    "REFUND_PRORATED",
+    "FAMILY_REVOKE"
   ]
 
   @revocation_allowed_ints [0, 1]
@@ -149,6 +170,9 @@ defmodule AppStoreServerLibrary.Models.JWSTransactionDecodedPayload do
              {"revocation_reason", :integer},
              {"raw_revocation_reason", :integer},
              {"revocation_date", :number},
+             {"revocation_type", :atom_or_string},
+             {"raw_revocation_type", :string},
+             {"revocation_percentage", :number},
              {"is_upgraded", :boolean},
              {"offer_type", :integer},
              {"raw_offer_type", :integer},
@@ -164,13 +188,15 @@ defmodule AppStoreServerLibrary.Models.JWSTransactionDecodedPayload do
              {"offer_discount_type", :atom_or_string},
              {"raw_offer_discount_type", :string},
              {"app_transaction_id", :string},
-             {"offer_period", :string}
+             {"offer_period", :string},
+             {"previous_original_transaction_id", :string}
            ]),
          :ok <- Validator.optional_enum(map, "type", @type_allowed),
          :ok <- Validator.optional_enum(map, "in_app_ownership_type", @in_app_ownership_allowed),
          :ok <- Validator.optional_enum(map, "transaction_reason", @transaction_reason_allowed),
          :ok <- Validator.optional_enum(map, "offer_discount_type", @offer_discount_allowed),
          :ok <- Validator.optional_enum(map, "environment", Environment.allowed_values()),
+         :ok <- Validator.optional_enum(map, "revocation_type", @revocation_type_allowed),
          :ok <-
            Validator.optional_integer_domain(map, "revocation_reason", @revocation_allowed_ints),
          :ok <-
@@ -180,8 +206,26 @@ defmodule AppStoreServerLibrary.Models.JWSTransactionDecodedPayload do
              @revocation_allowed_ints
            ),
          :ok <- Validator.optional_integer_domain(map, "offer_type", @offer_type_allowed_ints),
-         :ok <- Validator.optional_integer_domain(map, "raw_offer_type", @offer_type_allowed_ints) do
-      {:ok, struct(__MODULE__, map)}
+         :ok <-
+           Validator.optional_integer_domain(map, "raw_offer_type", @offer_type_allowed_ints),
+         {:ok, map_with_parsed_fields} <- parse_advanced_commerce_info(map) do
+      {:ok, struct(__MODULE__, map_with_parsed_fields)}
+    end
+  end
+
+  defp parse_advanced_commerce_info(map) do
+    case Map.get(map, :advanced_commerce_info) do
+      nil ->
+        {:ok, map}
+
+      info when is_map(info) ->
+        case AdvancedCommerceTransactionInfo.new(info) do
+          {:ok, parsed} -> {:ok, Map.put(map, :advanced_commerce_info, parsed)}
+          {:error, _} = error -> error
+        end
+
+      _other ->
+        {:error, {:verification_failure, "advanced_commerce_info must be a map"}}
     end
   end
 end

@@ -5,7 +5,7 @@ defmodule AppStoreServerLibrary.Models.RefundHistoryResponse do
   https://developer.apple.com/documentation/appstoreserverapi/refundhistoryresponse
   """
 
-  @type t() :: %__MODULE__{
+  @type t :: %__MODULE__{
           signed_transactions: [String.t()] | nil,
           revision: String.t() | nil,
           has_more: boolean() | nil

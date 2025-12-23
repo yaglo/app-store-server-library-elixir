@@ -13,7 +13,7 @@ defmodule AppStoreServerLibrary.Models.Data do
 
   alias AppStoreServerLibrary.Verification.Validator
 
-  @type t() :: %__MODULE__{
+  @type t :: %__MODULE__{
           environment: Environment.t() | nil,
           raw_environment: String.t() | nil,
           app_apple_id: integer() | nil,

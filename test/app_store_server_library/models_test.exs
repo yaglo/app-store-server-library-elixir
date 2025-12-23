@@ -2,26 +2,18 @@ defmodule AppStoreServerLibrary.ModelsTest do
   use ExUnit.Case, async: true
 
   alias AppStoreServerLibrary.Models.{
-    AccountTenure,
     AutoRenewStatus,
-    ConsumptionStatus,
-    DeliveryStatus,
     Environment,
     ExpirationIntent,
     InAppOwnershipType,
-    LifetimeDollarsPurchased,
-    LifetimeDollarsRefunded,
     NotificationTypeV2,
     OfferDiscountType,
     OfferType,
-    Platform,
-    PlayTime,
     PriceIncreaseStatus,
     RevocationReason,
     Status,
-    Subtype,
-    TransactionReason,
-    UserStatus
+    SubtypeV2,
+    TransactionReason
   }
 
   describe "Environment" do
@@ -50,10 +42,31 @@ defmodule AppStoreServerLibrary.ModelsTest do
 
   describe "NotificationTypeV2" do
     test "from_string converts known types" do
-      assert NotificationTypeV2.from_string("SUBSCRIBED") == :subscribed
+      assert NotificationTypeV2.from_string("CONSUMPTION_REQUEST") == :consumption_request
+      assert NotificationTypeV2.from_string("DID_CHANGE_RENEWAL_PREF") == :did_change_renewal_pref
+
+      assert NotificationTypeV2.from_string("DID_CHANGE_RENEWAL_STATUS") ==
+               :did_change_renewal_status
+
+      assert NotificationTypeV2.from_string("DID_FAIL_TO_RENEW") == :did_fail_to_renew
       assert NotificationTypeV2.from_string("DID_RENEW") == :did_renew
       assert NotificationTypeV2.from_string("EXPIRED") == :expired
+      assert NotificationTypeV2.from_string("EXTERNAL_PURCHASE_TOKEN") == :external_purchase_token
+      assert NotificationTypeV2.from_string("GRACE_PERIOD_EXPIRED") == :grace_period_expired
+      assert NotificationTypeV2.from_string("METADATA_UPDATE") == :metadata_update
+      assert NotificationTypeV2.from_string("MIGRATION") == :migration
+      assert NotificationTypeV2.from_string("OFFER_REDEEMED") == :offer_redeemed
+      assert NotificationTypeV2.from_string("ONE_TIME_CHARGE") == :one_time_charge
+      assert NotificationTypeV2.from_string("PRICE_CHANGE") == :price_change
+      assert NotificationTypeV2.from_string("PRICE_INCREASE") == :price_increase
       assert NotificationTypeV2.from_string("REFUND") == :refund
+      assert NotificationTypeV2.from_string("REFUND_DECLINED") == :refund_declined
+      assert NotificationTypeV2.from_string("REFUND_REVERSED") == :refund_reversed
+      assert NotificationTypeV2.from_string("RENEWAL_EXTENDED") == :renewal_extended
+      assert NotificationTypeV2.from_string("RENEWAL_EXTENSION") == :renewal_extension
+      assert NotificationTypeV2.from_string("RESCIND_CONSENT") == :rescind_consent
+      assert NotificationTypeV2.from_string("REVOKE") == :revoke
+      assert NotificationTypeV2.from_string("SUBSCRIBED") == :subscribed
       assert NotificationTypeV2.from_string("TEST") == :test
     end
 
@@ -62,49 +75,101 @@ defmodule AppStoreServerLibrary.ModelsTest do
     end
 
     test "to_string converts atoms" do
-      assert NotificationTypeV2.to_string(:subscribed) == "SUBSCRIBED"
+      assert NotificationTypeV2.to_string(:consumption_request) == "CONSUMPTION_REQUEST"
+
+      assert NotificationTypeV2.to_string(:did_change_renewal_pref) ==
+               "DID_CHANGE_RENEWAL_PREF"
+
+      assert NotificationTypeV2.to_string(:did_change_renewal_status) ==
+               "DID_CHANGE_RENEWAL_STATUS"
+
+      assert NotificationTypeV2.to_string(:did_fail_to_renew) == "DID_FAIL_TO_RENEW"
       assert NotificationTypeV2.to_string(:did_renew) == "DID_RENEW"
+      assert NotificationTypeV2.to_string(:expired) == "EXPIRED"
+
+      assert NotificationTypeV2.to_string(:external_purchase_token) ==
+               "EXTERNAL_PURCHASE_TOKEN"
+
+      assert NotificationTypeV2.to_string(:grace_period_expired) == "GRACE_PERIOD_EXPIRED"
+      assert NotificationTypeV2.to_string(:metadata_update) == "METADATA_UPDATE"
+      assert NotificationTypeV2.to_string(:migration) == "MIGRATION"
+      assert NotificationTypeV2.to_string(:offer_redeemed) == "OFFER_REDEEMED"
+      assert NotificationTypeV2.to_string(:one_time_charge) == "ONE_TIME_CHARGE"
+      assert NotificationTypeV2.to_string(:price_change) == "PRICE_CHANGE"
+      assert NotificationTypeV2.to_string(:price_increase) == "PRICE_INCREASE"
       assert NotificationTypeV2.to_string(:refund) == "REFUND"
+      assert NotificationTypeV2.to_string(:refund_declined) == "REFUND_DECLINED"
+      assert NotificationTypeV2.to_string(:refund_reversed) == "REFUND_REVERSED"
+      assert NotificationTypeV2.to_string(:renewal_extended) == "RENEWAL_EXTENDED"
+      assert NotificationTypeV2.to_string(:renewal_extension) == "RENEWAL_EXTENSION"
+      assert NotificationTypeV2.to_string(:rescind_consent) == "RESCIND_CONSENT"
+      assert NotificationTypeV2.to_string(:revoke) == "REVOKE"
+      assert NotificationTypeV2.to_string(:subscribed) == "SUBSCRIBED"
+      assert NotificationTypeV2.to_string(:test) == "TEST"
     end
   end
 
-  describe "Subtype" do
+  describe "SubtypeV2" do
     test "from_string converts known subtypes" do
-      assert Subtype.from_string("SUBSCRIBED") == :subscribed
-      assert Subtype.from_string("DID_NOT_RENEW") == :did_not_renew
-      assert Subtype.from_string("EXPIRED") == :expired
-      assert Subtype.from_string("IN_GRACE_PERIOD") == :in_grace_period
-      assert Subtype.from_string("PRICE_INCREASE") == :price_increase
-      assert Subtype.from_string("GRACE_PERIOD_EXPIRED") == :grace_period_expired
-      assert Subtype.from_string("PENDING") == :pending
-      assert Subtype.from_string("ACCEPTED") == :accepted
-      assert Subtype.from_string("REVOKED") == :revoked
-      assert Subtype.from_string("SUBSCRIPTION_EXTENDED") == :subscription_extended
-      assert Subtype.from_string("SUMMARY") == :summary
-      assert Subtype.from_string("UNREPORTED") == :unreported
-      assert Subtype.from_string("INITIAL_BUY") == :initial_buy
+      assert SubtypeV2.from_string("ACCEPTED") == :accepted
+      assert SubtypeV2.from_string("ACTIVE_TOKEN_REMINDER") == :active_token_reminder
+      assert SubtypeV2.from_string("AUTO_RENEW_DISABLED") == :auto_renew_disabled
+      assert SubtypeV2.from_string("AUTO_RENEW_ENABLED") == :auto_renew_enabled
+      assert SubtypeV2.from_string("BILLING_RECOVERY") == :billing_recovery
+      assert SubtypeV2.from_string("BILLING_RETRY") == :billing_retry
+      assert SubtypeV2.from_string("CREATED") == :created
+      assert SubtypeV2.from_string("DOWNGRADE") == :downgrade
+      assert SubtypeV2.from_string("FAILURE") == :failure
+      assert SubtypeV2.from_string("GRACE_PERIOD") == :grace_period
+      assert SubtypeV2.from_string("INITIAL_BUY") == :initial_buy
+      assert SubtypeV2.from_string("PENDING") == :pending
+      assert SubtypeV2.from_string("PRICE_INCREASE") == :price_increase
+      assert SubtypeV2.from_string("PRODUCT_NOT_FOR_SALE") == :product_not_for_sale
+      assert SubtypeV2.from_string("RESUBSCRIBE") == :resubscribe
+      assert SubtypeV2.from_string("SUMMARY") == :summary
+      assert SubtypeV2.from_string("UPGRADE") == :upgrade
+      assert SubtypeV2.from_string("UNREPORTED") == :unreported
+      assert SubtypeV2.from_string("VOLUNTARY") == :voluntary
     end
 
     test "from_string returns original for unknown" do
-      assert Subtype.from_string("UNKNOWN") == "UNKNOWN"
+      assert SubtypeV2.from_string("UNKNOWN") == "UNKNOWN"
     end
 
     test "to_string converts atoms" do
-      assert Subtype.to_string(:subscribed) == "SUBSCRIBED"
-      assert Subtype.to_string(:pending) == "PENDING"
-      assert Subtype.to_string(:summary) == "SUMMARY"
-      assert Subtype.to_string(:initial_buy) == "INITIAL_BUY"
+      assert SubtypeV2.to_string(:accepted) == "ACCEPTED"
+      assert SubtypeV2.to_string(:active_token_reminder) == "ACTIVE_TOKEN_REMINDER"
+      assert SubtypeV2.to_string(:auto_renew_disabled) == "AUTO_RENEW_DISABLED"
+      assert SubtypeV2.to_string(:auto_renew_enabled) == "AUTO_RENEW_ENABLED"
+      assert SubtypeV2.to_string(:billing_recovery) == "BILLING_RECOVERY"
+      assert SubtypeV2.to_string(:billing_retry) == "BILLING_RETRY"
+      assert SubtypeV2.to_string(:created) == "CREATED"
+      assert SubtypeV2.to_string(:downgrade) == "DOWNGRADE"
+      assert SubtypeV2.to_string(:failure) == "FAILURE"
+      assert SubtypeV2.to_string(:grace_period) == "GRACE_PERIOD"
+      assert SubtypeV2.to_string(:initial_buy) == "INITIAL_BUY"
+      assert SubtypeV2.to_string(:pending) == "PENDING"
+      assert SubtypeV2.to_string(:price_increase) == "PRICE_INCREASE"
+      assert SubtypeV2.to_string(:product_not_for_sale) == "PRODUCT_NOT_FOR_SALE"
+      assert SubtypeV2.to_string(:resubscribe) == "RESUBSCRIBE"
+      assert SubtypeV2.to_string(:summary) == "SUMMARY"
+      assert SubtypeV2.to_string(:upgrade) == "UPGRADE"
+      assert SubtypeV2.to_string(:unreported) == "UNREPORTED"
+      assert SubtypeV2.to_string(:voluntary) == "VOLUNTARY"
     end
   end
 
   describe "Status" do
-    # Status module has constants and to_integer, but no from_integer
-    test "constants return correct values" do
-      assert Status.active() == 1
-      assert Status.expired() == 2
-      assert Status.billing_retry() == 3
-      assert Status.billing_grace_period() == 4
-      assert Status.revoked() == 5
+    test "from_integer converts known statuses" do
+      assert Status.from_integer(1) == :active
+      assert Status.from_integer(2) == :expired
+      assert Status.from_integer(3) == :billing_retry
+      assert Status.from_integer(4) == :billing_grace_period
+      assert Status.from_integer(5) == :revoked
+    end
+
+    test "from_integer returns original for unknown" do
+      assert Status.from_integer(99) == 99
     end
 
     test "to_integer converts atoms" do
@@ -115,19 +180,23 @@ defmodule AppStoreServerLibrary.ModelsTest do
       assert Status.to_integer(:revoked) == 5
     end
 
-    test "to_string converts integers" do
-      assert Status.to_string(1) == "ACTIVE"
-      assert Status.to_string(2) == "EXPIRED"
-      assert Status.to_string(3) == "BILLING_RETRY"
-      assert Status.to_string(4) == "BILLING_GRACE_PERIOD"
-      assert Status.to_string(5) == "REVOKED"
+    test "to_string converts atoms" do
+      assert Status.to_string(:active) == "ACTIVE"
+      assert Status.to_string(:expired) == "EXPIRED"
+      assert Status.to_string(:billing_retry) == "BILLING_RETRY"
+      assert Status.to_string(:billing_grace_period) == "BILLING_GRACE_PERIOD"
+      assert Status.to_string(:revoked) == "REVOKED"
     end
   end
 
   describe "AutoRenewStatus" do
     test "from_integer converts known statuses" do
-      assert AutoRenewStatus.from_integer(0) == {:ok, :off}
-      assert AutoRenewStatus.from_integer(1) == {:ok, :on}
+      assert AutoRenewStatus.from_integer(0) == :off
+      assert AutoRenewStatus.from_integer(1) == :on
+    end
+
+    test "from_integer returns original for unknown" do
+      assert AutoRenewStatus.from_integer(99) == 99
     end
 
     test "to_integer converts atoms" do
@@ -138,31 +207,28 @@ defmodule AppStoreServerLibrary.ModelsTest do
 
   describe "ExpirationIntent" do
     test "from_integer converts known intents" do
-      assert ExpirationIntent.from_integer(1) == {:ok, :customer_cancelled}
-      assert ExpirationIntent.from_integer(2) == {:ok, :billing_error}
-
-      assert ExpirationIntent.from_integer(3) ==
-               {:ok, :customer_did_not_consent_to_price_increase}
-
-      assert ExpirationIntent.from_integer(4) == {:ok, :product_not_available}
-      assert ExpirationIntent.from_integer(5) == {:ok, :other}
+      assert ExpirationIntent.from_integer(1) == :customer_cancelled
+      assert ExpirationIntent.from_integer(2) == :billing_error
+      assert ExpirationIntent.from_integer(3) == :customer_did_not_consent_to_price_increase
+      assert ExpirationIntent.from_integer(4) == :product_not_available
+      assert ExpirationIntent.from_integer(5) == :other
     end
 
-    test "from_integer returns error for unknown" do
-      assert ExpirationIntent.from_integer(99) == {:error, :invalid_expiration_intent}
+    test "from_integer returns original for unknown" do
+      assert ExpirationIntent.from_integer(99) == 99
     end
   end
 
   describe "OfferType" do
     test "from_integer converts known types" do
-      assert OfferType.from_integer(1) == {:ok, :introductory_offer}
-      assert OfferType.from_integer(2) == {:ok, :promotional_offer}
-      assert OfferType.from_integer(3) == {:ok, :offer_code}
-      assert OfferType.from_integer(4) == {:ok, :win_back_offer}
+      assert OfferType.from_integer(1) == :introductory_offer
+      assert OfferType.from_integer(2) == :promotional_offer
+      assert OfferType.from_integer(3) == :offer_code
+      assert OfferType.from_integer(4) == :win_back_offer
     end
 
-    test "from_integer returns error for unknown" do
-      assert OfferType.from_integer(99) == {:error, :invalid_offer_type}
+    test "from_integer returns original for unknown" do
+      assert OfferType.from_integer(99) == 99
     end
 
     test "to_integer converts atoms" do
@@ -175,27 +241,34 @@ defmodule AppStoreServerLibrary.ModelsTest do
 
   describe "OfferDiscountType" do
     test "from_string converts known types" do
-      assert OfferDiscountType.from_string("FREE_TRIAL") == {:ok, :free_trial}
-      assert OfferDiscountType.from_string("PAY_AS_YOU_GO") == {:ok, :pay_as_you_go}
-      assert OfferDiscountType.from_string("PAY_UP_FRONT") == {:ok, :pay_up_front}
+      assert OfferDiscountType.from_string("FREE_TRIAL") == :free_trial
+      assert OfferDiscountType.from_string("PAY_AS_YOU_GO") == :pay_as_you_go
+      assert OfferDiscountType.from_string("PAY_UP_FRONT") == :pay_up_front
+      assert OfferDiscountType.from_string("ONE_TIME") == :one_time
+    end
+
+    test "from_string returns original for unknown" do
+      assert OfferDiscountType.from_string("UNKNOWN") == "UNKNOWN"
     end
 
     test "to_string converts atoms" do
       assert OfferDiscountType.to_string(:free_trial) == "FREE_TRIAL"
       assert OfferDiscountType.to_string(:pay_as_you_go) == "PAY_AS_YOU_GO"
+      assert OfferDiscountType.to_string(:pay_up_front) == "PAY_UP_FRONT"
+      assert OfferDiscountType.to_string(:one_time) == "ONE_TIME"
     end
   end
 
   describe "PriceIncreaseStatus" do
     test "from_integer converts known statuses" do
-      assert PriceIncreaseStatus.from_integer(0) == {:ok, :customer_has_not_responded}
+      assert PriceIncreaseStatus.from_integer(0) == :customer_has_not_responded
 
       assert PriceIncreaseStatus.from_integer(1) ==
-               {:ok, :customer_consented_or_was_notified_without_needing_consent}
+               :customer_consented_or_was_notified_without_needing_consent
     end
 
-    test "from_integer returns error for unknown" do
-      assert PriceIncreaseStatus.from_integer(99) == {:error, :invalid_price_increase_status}
+    test "from_integer returns original for unknown" do
+      assert PriceIncreaseStatus.from_integer(99) == 99
     end
 
     test "to_integer converts atoms" do
@@ -209,8 +282,12 @@ defmodule AppStoreServerLibrary.ModelsTest do
 
   describe "InAppOwnershipType" do
     test "from_string converts known types" do
-      assert InAppOwnershipType.from_string("FAMILY_SHARED") == {:ok, :family_shared}
-      assert InAppOwnershipType.from_string("PURCHASED") == {:ok, :purchased}
+      assert InAppOwnershipType.from_string("FAMILY_SHARED") == :family_shared
+      assert InAppOwnershipType.from_string("PURCHASED") == :purchased
+    end
+
+    test "from_string returns original for unknown" do
+      assert InAppOwnershipType.from_string("UNKNOWN") == "UNKNOWN"
     end
 
     test "to_string converts atoms" do
@@ -221,8 +298,12 @@ defmodule AppStoreServerLibrary.ModelsTest do
 
   describe "TransactionReason" do
     test "from_string converts known reasons" do
-      assert TransactionReason.from_string("PURCHASE") == {:ok, :purchase}
-      assert TransactionReason.from_string("RENEWAL") == {:ok, :renewal}
+      assert TransactionReason.from_string("PURCHASE") == :purchase
+      assert TransactionReason.from_string("RENEWAL") == :renewal
+    end
+
+    test "from_string returns original for unknown" do
+      assert TransactionReason.from_string("UNKNOWN") == "UNKNOWN"
     end
 
     test "to_string converts atoms" do
@@ -233,142 +314,17 @@ defmodule AppStoreServerLibrary.ModelsTest do
 
   describe "RevocationReason" do
     test "from_integer converts known reasons" do
-      assert RevocationReason.from_integer(0) == {:ok, :refunded_for_other_reason}
-      assert RevocationReason.from_integer(1) == {:ok, :refunded_due_to_issue}
+      assert RevocationReason.from_integer(0) == :refunded_for_other_reason
+      assert RevocationReason.from_integer(1) == :refunded_due_to_issue
     end
 
-    test "from_integer returns error for unknown" do
-      assert RevocationReason.from_integer(99) == {:error, :invalid_reason}
+    test "from_integer returns original for unknown" do
+      assert RevocationReason.from_integer(99) == 99
     end
 
     test "to_integer converts atoms" do
       assert RevocationReason.to_integer(:refunded_for_other_reason) == 0
       assert RevocationReason.to_integer(:refunded_due_to_issue) == 1
-    end
-  end
-
-  # These modules return atoms directly (not wrapped in {:ok, atom})
-  describe "ConsumptionStatus" do
-    test "from_integer converts known statuses" do
-      assert ConsumptionStatus.from_integer(0) == :undeclared
-      assert ConsumptionStatus.from_integer(1) == :not_consumed
-      assert ConsumptionStatus.from_integer(2) == :partially_consumed
-      assert ConsumptionStatus.from_integer(3) == :fully_consumed
-    end
-
-    test "to_integer converts atoms" do
-      assert ConsumptionStatus.to_integer(:undeclared) == 0
-      assert ConsumptionStatus.to_integer(:fully_consumed) == 3
-    end
-  end
-
-  describe "DeliveryStatus" do
-    test "from_integer converts known statuses" do
-      assert DeliveryStatus.from_integer(0) == :delivered_and_working_properly
-      assert DeliveryStatus.from_integer(1) == :did_not_deliver_due_to_quality_issue
-      assert DeliveryStatus.from_integer(2) == :delivered_wrong_item
-      assert DeliveryStatus.from_integer(3) == :did_not_deliver_due_to_server_outage
-      assert DeliveryStatus.from_integer(4) == :did_not_deliver_due_to_in_game_currency_change
-      assert DeliveryStatus.from_integer(5) == :did_not_deliver_for_other_reason
-    end
-
-    test "to_integer converts atoms" do
-      assert DeliveryStatus.to_integer(:delivered_and_working_properly) == 0
-      assert DeliveryStatus.to_integer(:did_not_deliver_for_other_reason) == 5
-    end
-  end
-
-  describe "AccountTenure" do
-    test "from_integer converts known tenures" do
-      assert AccountTenure.from_integer(0) == :undeclared
-      assert AccountTenure.from_integer(1) == :zero_to_three_days
-      assert AccountTenure.from_integer(2) == :three_days_to_ten_days
-      assert AccountTenure.from_integer(3) == :ten_days_to_thirty_days
-      assert AccountTenure.from_integer(4) == :thirty_days_to_ninety_days
-      assert AccountTenure.from_integer(5) == :ninety_days_to_one_hundred_eighty_days
-
-      assert AccountTenure.from_integer(6) ==
-               :one_hundred_eighty_days_to_three_hundred_sixty_five_days
-
-      assert AccountTenure.from_integer(7) == :greater_than_three_hundred_sixty_five_days
-    end
-
-    test "to_integer converts atoms" do
-      assert AccountTenure.to_integer(:undeclared) == 0
-      assert AccountTenure.to_integer(:greater_than_three_hundred_sixty_five_days) == 7
-    end
-  end
-
-  describe "PlayTime" do
-    test "from_integer converts known play times" do
-      assert PlayTime.from_integer(0) == :undeclared
-      assert PlayTime.from_integer(1) == :zero_to_five_minutes
-      assert PlayTime.from_integer(2) == :five_to_sixty_minutes
-      assert PlayTime.from_integer(3) == :one_to_six_hours
-      assert PlayTime.from_integer(4) == :six_hours_to_twenty_four_hours
-      assert PlayTime.from_integer(5) == :one_day_to_four_days
-      assert PlayTime.from_integer(6) == :four_days_to_sixteen_days
-      assert PlayTime.from_integer(7) == :over_sixteen_days
-    end
-
-    test "to_integer converts atoms" do
-      assert PlayTime.to_integer(:undeclared) == 0
-      assert PlayTime.to_integer(:over_sixteen_days) == 7
-    end
-  end
-
-  describe "LifetimeDollarsPurchased" do
-    test "from_integer converts known values" do
-      assert LifetimeDollarsPurchased.from_integer(0) == :undeclared
-      assert LifetimeDollarsPurchased.from_integer(1) == :zero_dollars
-      assert LifetimeDollarsPurchased.from_integer(7) == :two_thousand_dollars_or_greater
-    end
-
-    test "to_integer converts atoms" do
-      assert LifetimeDollarsPurchased.to_integer(:undeclared) == 0
-      assert LifetimeDollarsPurchased.to_integer(:two_thousand_dollars_or_greater) == 7
-    end
-  end
-
-  describe "LifetimeDollarsRefunded" do
-    test "from_integer converts known values" do
-      assert LifetimeDollarsRefunded.from_integer(0) == :undeclared
-      assert LifetimeDollarsRefunded.from_integer(1) == :zero_dollars
-      assert LifetimeDollarsRefunded.from_integer(7) == :two_thousand_dollars_or_greater
-    end
-
-    test "to_integer converts atoms" do
-      assert LifetimeDollarsRefunded.to_integer(:undeclared) == 0
-      assert LifetimeDollarsRefunded.to_integer(:two_thousand_dollars_or_greater) == 7
-    end
-  end
-
-  describe "Platform" do
-    test "from_integer converts known platforms" do
-      assert Platform.from_integer(0) == :undeclared
-      assert Platform.from_integer(1) == :apple
-      assert Platform.from_integer(2) == :non_apple
-    end
-
-    test "to_integer converts atoms" do
-      assert Platform.to_integer(:undeclared) == 0
-      assert Platform.to_integer(:apple) == 1
-      assert Platform.to_integer(:non_apple) == 2
-    end
-  end
-
-  describe "UserStatus" do
-    test "from_integer converts known statuses" do
-      assert UserStatus.from_integer(0) == :undeclared
-      assert UserStatus.from_integer(1) == :active
-      assert UserStatus.from_integer(2) == :suspended
-      assert UserStatus.from_integer(3) == :terminated
-      assert UserStatus.from_integer(4) == :limited_access
-    end
-
-    test "to_integer converts atoms" do
-      assert UserStatus.to_integer(:undeclared) == 0
-      assert UserStatus.to_integer(:limited_access) == 4
     end
   end
 end
