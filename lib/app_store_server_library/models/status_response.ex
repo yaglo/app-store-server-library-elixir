@@ -7,6 +7,12 @@ defmodule AppStoreServerLibrary.Models.StatusResponse do
 
   alias AppStoreServerLibrary.Models.{Environment, SubscriptionGroupIdentifierItem}
 
+  @doc false
+  @spec __nested_fields__() :: %{atom() => {:list | :single, module()}}
+  def __nested_fields__ do
+    %{data: {:list, SubscriptionGroupIdentifierItem}}
+  end
+
   @type t :: %__MODULE__{
           environment: Environment.t() | nil,
           raw_environment: String.t() | nil,
