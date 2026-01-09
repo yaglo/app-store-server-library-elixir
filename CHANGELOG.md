@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2025-01-09
+
+### Fixed
+- Nested structs in API responses now correctly deserialize with snake_case keys. Previously, only top-level fields were converted from camelCase, leaving nested objects like `StatusResponse.data`, `SubscriptionGroupIdentifierItem.last_transactions`, and `NotificationHistoryResponseItem.send_attempts` with unconverted camelCase string keys.
+- `LastTransactionsItem.status` now correctly converts to `Status.t()` atoms (`:active`, `:expired`, etc.) instead of incorrectly using `OrderLookupStatus`.
+- Fixed compile-time warning for `:"OTP-PUB-KEY".encode/2` in chain verifier.
+
+### Added
+- `__nested_fields__/0` callback on response structs for declaring nested type information, enabling automatic recursive deserialization.
+
 ## [2.0.0] - 2025-12-23
 
 ### Added

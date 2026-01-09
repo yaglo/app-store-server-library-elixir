@@ -33,12 +33,11 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
     ExtendRenewalDateRequest,
     ExtendRenewalDateResponse,
     GetImageListResponse,
-    GetImageListResponseItem,
     GetMessageListResponse,
-    GetMessageListResponseItem,
     HistoryResponse,
     ImageState,
     InAppOwnershipType,
+    LastTransactionsItem,
     MassExtendRenewalDateRequest,
     MassExtendRenewalDateResponse,
     MassExtendRenewalDateStatusResponse,
@@ -826,7 +825,8 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
           |> add_raw_status_field(decoded)
           |> add_raw_first_send_attempt_result(decoded)
 
-        {:ok, struct(response_module, atom_data)}
+        result = struct(response_module, atom_data)
+        {:ok, apply_enum_conversions(result, response_module)}
 
       {:error, reason} ->
         {:error,
@@ -878,32 +878,6 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
     MessageState.from_string(value)
   end
 
-  defp convert_field_value(:image_identifiers, value) when is_list(value) do
-    Enum.map(value, fn item ->
-      convert_nested_response(item, GetImageListResponseItem)
-    end)
-  end
-
-  defp convert_field_value(:message_identifiers, value) when is_list(value) do
-    Enum.map(value, fn item ->
-      convert_nested_response(item, GetMessageListResponseItem)
-    end)
-  end
-
-  defp convert_field_value(:notification_history, value) when is_list(value) do
-    Enum.map(value, fn item ->
-      convert_nested_response(item, NotificationHistoryResponseItem)
-    end)
-  end
-
-  defp convert_field_value(:status, value) when is_integer(value) do
-    OrderLookupStatus.from_integer(value)
-  end
-
-  defp convert_field_value(:send_attempts, value) when is_list(value) do
-    Enum.map(value, fn item -> convert_nested_response(item, SendAttemptItem) end)
-  end
-
   defp convert_field_value(:send_attempt_result, value) when is_binary(value) do
     SendAttemptResult.from_string(value)
   end
@@ -914,11 +888,34 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
 
   defp convert_field_value(_field_name, value), do: value
 
-  defp reduce_to_atom_map(data, _module) do
+  defp reduce_to_atom_map(data, module) do
+    nested_fields = get_nested_fields(module)
+
     Enum.reduce(data, %{}, fn {k, v}, acc ->
       atom_key = JSON.camel_to_snake_atom(k)
-      Map.put(acc, atom_key, convert_field_value(atom_key, v))
+
+      converted =
+        case Map.get(nested_fields, atom_key) do
+          {:list, nested_module} when is_list(v) ->
+            Enum.map(v, &convert_nested_response(&1, nested_module))
+
+          {:single, nested_module} when is_map(v) ->
+            convert_nested_response(v, nested_module)
+
+          nil ->
+            convert_field_value(atom_key, v)
+        end
+
+      Map.put(acc, atom_key, converted)
     end)
+  end
+
+  defp get_nested_fields(module) do
+    Code.ensure_loaded(module)
+
+    if function_exported?(module, :__nested_fields__, 0),
+      do: module.__nested_fields__(),
+      else: %{}
   end
 
   # Convert nested response objects to structs
@@ -931,10 +928,29 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
       |> maybe_add_raw_send_attempt_result(module, data)
       |> maybe_add_raw_first_send_attempt_result(module, data)
 
-    struct(module, atom_data)
+    result = struct(module, atom_data)
+    apply_enum_conversions(result, module)
   end
 
   defp convert_nested_response(value, _module), do: value
+
+  defp apply_enum_conversions(
+         %OrderLookupResponse{status: status} = resp,
+         OrderLookupResponse
+       )
+       when is_integer(status) do
+    %{resp | status: OrderLookupStatus.from_integer(status)}
+  end
+
+  defp apply_enum_conversions(
+         %LastTransactionsItem{status: status} = item,
+         LastTransactionsItem
+       )
+       when is_integer(status) do
+    %{item | status: Status.from_integer(status), raw_status: status}
+  end
+
+  defp apply_enum_conversions(struct, _module), do: struct
 
   defp maybe_add_raw_send_attempt_result(atom_data, SendAttemptItem, original_data) do
     if Map.has_key?(original_data, "sendAttemptResult") and

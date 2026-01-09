@@ -10,6 +10,12 @@ defmodule AppStoreServerLibrary.Models.NotificationHistoryResponseItem do
 
   alias AppStoreServerLibrary.Models.SendAttemptItem
 
+  @doc false
+  @spec __nested_fields__() :: %{atom() => {:list | :single, module()}}
+  def __nested_fields__ do
+    %{send_attempts: {:list, SendAttemptItem}}
+  end
+
   @type t :: %__MODULE__{
           signed_payload: String.t() | nil,
           send_attempts: [SendAttemptItem.t()] | nil,

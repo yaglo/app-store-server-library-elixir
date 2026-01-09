@@ -457,7 +457,8 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
     ocsp_request = {:OCSPRequest, tbs_request, :asn1_NOVALUE}
 
     # Encode to DER
-    {:ok, ocsp_request_der} = :"OTP-PUB-KEY".encode(:OCSPRequest, ocsp_request)
+    # credo:disable-for-next-line Credo.Check.Refactor.Apply
+    {:ok, ocsp_request_der} = apply(:"OTP-PUB-KEY", :encode, [:OCSPRequest, ocsp_request])
     {:ok, :erlang.iolist_to_binary(ocsp_request_der)}
   rescue
     e -> {:error, {:verification_failure, "Failed to build OCSP request: #{inspect(e)}"}}

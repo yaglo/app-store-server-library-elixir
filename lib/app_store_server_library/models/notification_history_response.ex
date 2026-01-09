@@ -3,6 +3,14 @@ defmodule AppStoreServerLibrary.Models.NotificationHistoryResponse do
   Response for notification history requests.
   """
 
+  alias AppStoreServerLibrary.Models.NotificationHistoryResponseItem
+
+  @doc false
+  @spec __nested_fields__() :: %{atom() => {:list | :single, module()}}
+  def __nested_fields__ do
+    %{notification_history: {:list, NotificationHistoryResponseItem}}
+  end
+
   defstruct [
     :notification_history,
     :has_more,

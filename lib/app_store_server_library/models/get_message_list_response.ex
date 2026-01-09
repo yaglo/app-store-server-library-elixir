@@ -5,6 +5,12 @@ defmodule AppStoreServerLibrary.Models.GetMessageListResponse do
 
   alias AppStoreServerLibrary.Models.GetMessageListResponseItem
 
+  @doc false
+  @spec __nested_fields__() :: %{atom() => {:list | :single, module()}}
+  def __nested_fields__ do
+    %{message_identifiers: {:list, GetMessageListResponseItem}}
+  end
+
   @type t :: %__MODULE__{
           message_identifiers: [GetMessageListResponseItem.t()]
         }
