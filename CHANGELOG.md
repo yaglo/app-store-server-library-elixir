@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2025-01-30
+
+### Fixed
+- Integer enum fields (`offer_type`, `revocation_reason`, `expiration_intent`, `auto_renew_status`, `price_increase_status`, `status`) are now converted from raw integers to atoms via their enum modules. Previously these fields remained as raw integers despite their type specs declaring atom types.
+
+### Added
+- `Validator.optional_integer_enum/4` for validating and converting integer enum fields in a single step.
+
 ## [2.1.0] - 2025-01-09
 
 ### Fixed

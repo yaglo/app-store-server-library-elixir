@@ -132,26 +132,30 @@ defmodule AppStoreServerLibrary.Models.JWSRenewalInfoDecodedPayload do
            ]),
          :ok <- Validator.optional_string_list(map, "eligible_win_back_offer_ids"),
          :ok <-
-           Validator.optional_integer_domain(map, "expiration_intent", @expiration_intent_allowed),
-         :ok <-
            Validator.optional_integer_domain(
              map,
              "raw_expiration_intent",
              @expiration_intent_allowed
            ),
-         :ok <-
-           Validator.optional_integer_domain(map, "auto_renew_status", @auto_renew_status_allowed),
+         {:ok, map} <-
+           Validator.optional_integer_enum(
+             map,
+             "expiration_intent",
+             @expiration_intent_allowed,
+             ExpirationIntent
+           ),
          :ok <-
            Validator.optional_integer_domain(
              map,
              "raw_auto_renew_status",
              @auto_renew_status_allowed
            ),
-         :ok <-
-           Validator.optional_integer_domain(
+         {:ok, map} <-
+           Validator.optional_integer_enum(
              map,
-             "price_increase_status",
-             @price_increase_status_allowed
+             "auto_renew_status",
+             @auto_renew_status_allowed,
+             AutoRenewStatus
            ),
          :ok <-
            Validator.optional_integer_domain(
@@ -159,9 +163,22 @@ defmodule AppStoreServerLibrary.Models.JWSRenewalInfoDecodedPayload do
              "raw_price_increase_status",
              @price_increase_status_allowed
            ),
-         :ok <- Validator.optional_integer_domain(map, "offer_type", @offer_type_allowed_ints),
+         {:ok, map} <-
+           Validator.optional_integer_enum(
+             map,
+             "price_increase_status",
+             @price_increase_status_allowed,
+             PriceIncreaseStatus
+           ),
          :ok <-
            Validator.optional_integer_domain(map, "raw_offer_type", @offer_type_allowed_ints),
+         {:ok, map} <-
+           Validator.optional_integer_enum(
+             map,
+             "offer_type",
+             @offer_type_allowed_ints,
+             OfferType
+           ),
          :ok <- Validator.optional_enum(map, "offer_discount_type", @offer_discount_allowed),
          :ok <- Validator.optional_enum(map, "environment", Environment.allowed_values()),
          {:ok, parsed_map} <- parse_advanced_commerce_info(map) do
