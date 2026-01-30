@@ -198,16 +198,27 @@ defmodule AppStoreServerLibrary.Models.JWSTransactionDecodedPayload do
          :ok <- Validator.optional_enum(map, "environment", Environment.allowed_values()),
          :ok <- Validator.optional_enum(map, "revocation_type", @revocation_type_allowed),
          :ok <-
-           Validator.optional_integer_domain(map, "revocation_reason", @revocation_allowed_ints),
-         :ok <-
            Validator.optional_integer_domain(
              map,
              "raw_revocation_reason",
              @revocation_allowed_ints
            ),
-         :ok <- Validator.optional_integer_domain(map, "offer_type", @offer_type_allowed_ints),
+         {:ok, map} <-
+           Validator.optional_integer_enum(
+             map,
+             "revocation_reason",
+             @revocation_allowed_ints,
+             RevocationReason
+           ),
          :ok <-
            Validator.optional_integer_domain(map, "raw_offer_type", @offer_type_allowed_ints),
+         {:ok, map} <-
+           Validator.optional_integer_enum(
+             map,
+             "offer_type",
+             @offer_type_allowed_ints,
+             OfferType
+           ),
          {:ok, map_with_parsed_fields} <- parse_advanced_commerce_info(map) do
       {:ok, struct(__MODULE__, map_with_parsed_fields)}
     end
