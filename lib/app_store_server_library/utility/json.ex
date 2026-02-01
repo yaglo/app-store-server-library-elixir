@@ -3,8 +3,6 @@ defmodule AppStoreServerLibrary.Utility.JSON do
   Utility functions for JSON key conversion between camelCase and snake_case.
   """
 
-  alias AppStoreServerLibrary.Models.Environment
-
   @doc """
   Converts a camelCase string (or already-atom key) to a snake_case atom.
 
@@ -75,10 +73,7 @@ defmodule AppStoreServerLibrary.Utility.JSON do
 
   @doc """
   Converts a map with camelCase string keys to snake_case atom keys.
-  Recursively converts nested maps and lists.
-
-  Special handling:
-  - `:environment` and `:receipt_type` fields are converted to atoms via `Environment.from_string/1`
+  Recursively converts nested maps and lists. Does not convert values.
 
   ## Examples
 
@@ -87,26 +82,14 @@ defmodule AppStoreServerLibrary.Utility.JSON do
   """
   @spec keys_to_atoms(map()) :: map()
   def keys_to_atoms(map) when is_map(map) do
-    map
-    |> Enum.map(fn {k, v} ->
-      key = camel_to_snake_atom(k)
-      value = convert_value(key, v)
-      {key, value}
+    Map.new(map, fn {k, v} ->
+      {camel_to_snake_atom(k), convert_value(v)}
     end)
-    |> Map.new()
   end
 
-  # Handle environment and receipt_type fields that need string-to-atom conversion
-  defp convert_value(key, value) when key in [:environment, :receipt_type] and is_binary(value) do
-    Environment.from_string(value)
-  end
-
-  defp convert_value(_key, value) when is_map(value), do: keys_to_atoms(value)
-
-  defp convert_value(_key, value) when is_list(value),
-    do: Enum.map(value, &convert_value(nil, &1))
-
-  defp convert_value(_key, value), do: value
+  defp convert_value(value) when is_map(value), do: keys_to_atoms(value)
+  defp convert_value(value) when is_list(value), do: Enum.map(value, &convert_value/1)
+  defp convert_value(value), do: value
 
   @doc """
   Converts a map with snake_case atom keys to camelCase string keys.

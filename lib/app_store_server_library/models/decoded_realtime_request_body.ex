@@ -48,7 +48,8 @@ defmodule AppStoreServerLibrary.Models.DecodedRealtimeRequestBody do
              {"environment", :atom_or_string},
              {"raw_environment", :string}
            ]),
-         :ok <- Validator.optional_enum(map, "environment", @environment_allowed) do
+         {:ok, map} <-
+           Validator.optional_string_enum(map, "environment", @environment_allowed, Environment) do
       {:ok, struct(__MODULE__, map)}
     end
   end

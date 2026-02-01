@@ -51,7 +51,8 @@ defmodule AppStoreServerLibrary.Models.Summary do
              {"failed_count", :number}
            ]),
          :ok <- Validator.optional_string_list(map, "storefront_country_codes"),
-         :ok <- Validator.optional_enum(map, "environment", @environment_allowed) do
+         {:ok, map} <-
+           Validator.optional_string_enum(map, "environment", @environment_allowed, Environment) do
       {:ok, struct(__MODULE__, map)}
     end
   end

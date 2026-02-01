@@ -175,6 +175,57 @@ defmodule AppStoreServerLibrary.Verification.Validator do
     end
   end
 
+  @doc """
+  Validates an optional string field is in the allowed set, converts it to an atom
+  via `enum_module.from_string/1`, and stores the original string in `raw_<field>`.
+
+  Returns `{:ok, updated_map}` on success (or when the field is nil/missing),
+  or `{:error, ...}` on validation failure. Uses `Map.put_new` for the raw field
+  so an explicitly provided value is not overwritten.
+  """
+  @spec optional_string_enum(map(), String.t() | atom(), [atom() | String.t()], module()) ::
+          {:ok, map()} | error()
+  def optional_string_enum(map, key, allowed, enum_module) do
+    str_key = to_string(key)
+    str_map = string_key_map(map)
+    value = Map.get(str_map, str_key)
+
+    cond do
+      is_nil(value) ->
+        {:ok, map}
+
+      is_atom(value) ->
+        # Already converted (e.g., by keys_to_atoms for environment/receipt_type)
+        {:ok, map}
+
+      is_binary(value) and enum_member?(value, allowed) ->
+        atom_key = String.to_existing_atom(str_key)
+
+        if Map.has_key?(map, atom_key) do
+          raw_atom_key = String.to_existing_atom("raw_#{str_key}")
+
+          updated =
+            map
+            |> Map.put(atom_key, enum_module.from_string(value))
+            |> Map.put_new(raw_atom_key, value)
+
+          {:ok, updated}
+        else
+          raw_str_key = "raw_#{str_key}"
+
+          updated =
+            map
+            |> Map.put(str_key, enum_module.from_string(value))
+            |> Map.put_new(raw_str_key, value)
+
+          {:ok, updated}
+        end
+
+      true ->
+        {:error, {:verification_failure, "Invalid enum field: #{str_key}"}}
+    end
+  end
+
   defp enum_member?(value, allowed) when is_atom(value), do: value in allowed
   defp enum_member?(value, allowed) when is_binary(value), do: value in allowed
   defp enum_member?(_value, _allowed), do: false

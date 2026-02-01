@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-02-01
+
+### Fixed
+- String enum fields (`notification_type`, `subtype`, `environment`, `type`, `in_app_ownership_type`, `transaction_reason`, `offer_discount_type`, `revocation_type`, `consumption_request_reason`, `receipt_type`, `original_platform`) in JWS-decoded payloads are now converted from raw strings to atoms via their enum modules. Previously these fields remained as raw strings (e.g., `"TEST"` instead of `:test`) despite their type specs declaring atom types.
+- `raw_` fields for string enums (`raw_notification_type`, `raw_subtype`, `raw_environment`, etc.) are now populated with the original string value in JWS-decoded payloads. Previously these were always `nil`.
+- `keys_to_atoms/1` no longer performs value conversion for `environment` and `receipt_type` fields. Value conversion is now handled consistently by model `new/1` functions via `Validator.optional_string_enum/4`.
+
+### Added
+- `Validator.optional_string_enum/4` for validating and converting string enum fields in a single step, mirroring the existing `optional_integer_enum/4` for integer enums.
+
 ## [2.1.1] - 2025-01-30
 
 ### Fixed

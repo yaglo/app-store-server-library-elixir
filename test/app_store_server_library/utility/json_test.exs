@@ -25,5 +25,34 @@ defmodule AppStoreServerLibrary.Utility.JSONTest do
                first_send_attempt_result: "SUCCESS"
              }
     end
+
+    test "only converts keys, not values" do
+      result = JSON.keys_to_atoms(%{"environment" => "Production", "notificationType" => "TEST"})
+      # keys_to_atoms is a pure key converter — values are preserved as-is
+      assert result == %{environment: "Production", notification_type: "TEST"}
+    end
+
+    test "recursively converts nested maps without touching values" do
+      result =
+        JSON.keys_to_atoms(%{
+          "data" => %{"environment" => "Sandbox", "status" => 1},
+          "notificationType" => "SUBSCRIBED"
+        })
+
+      assert result.notification_type == "SUBSCRIBED"
+      assert result.data.environment == "Sandbox"
+      assert result.data.status == 1
+    end
+
+    test "converts values in lists without touching non-map elements" do
+      result =
+        JSON.keys_to_atoms(%{
+          "storefrontCountryCodes" => ["USA", "CAN"],
+          "items" => [%{"bundleId" => "com.example"}]
+        })
+
+      assert result.storefront_country_codes == ["USA", "CAN"]
+      assert result.items == [%{bundle_id: "com.example"}]
+    end
   end
 end

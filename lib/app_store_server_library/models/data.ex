@@ -78,9 +78,10 @@ defmodule AppStoreServerLibrary.Models.Data do
          :ok <- Validator.optional_integer_domain(map, "raw_status", @status_allowed),
          {:ok, map} <-
            Validator.optional_integer_enum(map, "status", @status_allowed, Status),
-         :ok <-
-           Validator.optional_enum(map, "consumption_request_reason", @consumption_reason_allowed),
-         :ok <- Validator.optional_enum(map, "environment", Environment.allowed_values()) do
+         {:ok, map} <-
+           Validator.optional_string_enum(map, "consumption_request_reason", @consumption_reason_allowed, ConsumptionRequestReason),
+         {:ok, map} <-
+           Validator.optional_string_enum(map, "environment", Environment.allowed_values(), Environment) do
       {:ok, struct(__MODULE__, map)}
     end
   end
