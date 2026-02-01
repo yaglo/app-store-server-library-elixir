@@ -191,12 +191,18 @@ defmodule AppStoreServerLibrary.Models.JWSTransactionDecodedPayload do
              {"offer_period", :string},
              {"previous_original_transaction_id", :string}
            ]),
-         :ok <- Validator.optional_enum(map, "type", @type_allowed),
-         :ok <- Validator.optional_enum(map, "in_app_ownership_type", @in_app_ownership_allowed),
-         :ok <- Validator.optional_enum(map, "transaction_reason", @transaction_reason_allowed),
-         :ok <- Validator.optional_enum(map, "offer_discount_type", @offer_discount_allowed),
-         :ok <- Validator.optional_enum(map, "environment", Environment.allowed_values()),
-         :ok <- Validator.optional_enum(map, "revocation_type", @revocation_type_allowed),
+         {:ok, map} <-
+           Validator.optional_string_enum(map, "type", @type_allowed, Type),
+         {:ok, map} <-
+           Validator.optional_string_enum(map, "in_app_ownership_type", @in_app_ownership_allowed, InAppOwnershipType),
+         {:ok, map} <-
+           Validator.optional_string_enum(map, "transaction_reason", @transaction_reason_allowed, TransactionReason),
+         {:ok, map} <-
+           Validator.optional_string_enum(map, "offer_discount_type", @offer_discount_allowed, OfferDiscountType),
+         {:ok, map} <-
+           Validator.optional_string_enum(map, "environment", Environment.allowed_values(), Environment),
+         {:ok, map} <-
+           Validator.optional_string_enum(map, "revocation_type", @revocation_type_allowed, RevocationType),
          :ok <-
            Validator.optional_integer_domain(
              map,

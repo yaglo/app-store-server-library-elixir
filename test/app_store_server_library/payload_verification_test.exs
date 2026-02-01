@@ -43,8 +43,8 @@ defmodule AppStoreServerLibrary.PayloadVerificationTest do
       result = SignedDataVerifier.verify_and_decode_notification(verifier, test_notification)
 
       assert {:ok, notification} = result
-      # notification_type is the raw string from the payload
-      assert notification.notification_type == "TEST"
+      assert notification.notification_type == :test
+      assert notification.raw_notification_type == "TEST"
     end
 
     test "fails with production environment when notification is for sandbox" do
@@ -410,8 +410,10 @@ defmodule AppStoreServerLibrary.PayloadVerificationTest do
       result = SignedDataVerifier.verify_and_decode_notification(verifier, signed_payload)
 
       assert {:ok, notification} = result
-      assert notification.notification_type == "RENEWAL_EXTENSION"
-      assert notification.subtype == "SUMMARY"
+      assert notification.notification_type == :renewal_extension
+      assert notification.raw_notification_type == "RENEWAL_EXTENSION"
+      assert notification.subtype == :summary
+      assert notification.raw_subtype == "SUMMARY"
       assert notification.summary != nil
     end
   end

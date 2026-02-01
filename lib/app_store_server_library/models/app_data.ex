@@ -39,7 +39,8 @@ defmodule AppStoreServerLibrary.Models.AppData do
              {"raw_environment", :string},
              {"signed_app_transaction_info", :string}
            ]),
-         :ok <- Validator.optional_enum(map, "environment", Environment.allowed_values()) do
+         {:ok, map} <-
+           Validator.optional_string_enum(map, "environment", Environment.allowed_values(), Environment) do
       {:ok, struct(__MODULE__, map)}
     end
   end
