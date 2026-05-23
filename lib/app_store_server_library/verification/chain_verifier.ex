@@ -147,8 +147,14 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
          [leaf_der, intermediate_der, chain_root_der],
          effective_date
        ) do
-    # Verify the chain manually since pkix_path_validation has issues with Apple's certificates
-    # (it incorrectly reports :invalid_key_usage for valid end-entity certificates)
+    # Verify the chain manually. `:public_key.pkix_path_validation/3` validates
+    # certificate validity against the wall clock (`erlang:universaltime/0`)
+    # and has no option to supply a custom timestamp. In offline mode
+    # (`enable_online_checks: false`) we validate against the payload's
+    # `signedDate` so historical receipts can still be processed after their
+    # signing certs expire — see `SignedDataVerifier.get_effective_date/2`.
+    # Walking the chain by hand also keeps the online and offline paths on a
+    # single code path.
 
     with :ok <- verify_chain_root_is_trusted(verifier.root_certificates, chain_root_der),
          :ok <- verify_signature(intermediate_der, chain_root_der),
@@ -456,10 +462,10 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
     # Build OCSPRequest record (unsigned)
     ocsp_request = {:OCSPRequest, tbs_request, :asn1_NOVALUE}
 
-    # Encode to DER
-    # credo:disable-for-next-line Credo.Check.Refactor.Apply
-    {:ok, ocsp_request_der} = apply(:"OTP-PUB-KEY", :encode, [:OCSPRequest, ocsp_request])
-    {:ok, :erlang.iolist_to_binary(ocsp_request_der)}
+    # Encode to DER. `:public_key.der_encode/2` dispatches to the right ASN.1
+    # module across OTP versions — OTP 28 removed the `:"OTP-PUB-KEY"` module
+    # that previous releases exposed directly.
+    {:ok, :public_key.der_encode(:OCSPRequest, ocsp_request)}
   rescue
     e -> {:error, {:verification_failure, "Failed to build OCSP request: #{inspect(e)}"}}
   end

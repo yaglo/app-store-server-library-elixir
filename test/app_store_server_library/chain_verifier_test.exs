@@ -880,6 +880,37 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
       # Should complete without crash - either success or HTTP error
       assert result == :ok or match?({:error, _}, result)
     end
+
+    # OTP 28 removed the `:"OTP-PUB-KEY"` ASN.1 module that earlier versions
+    # exposed directly. A prior `build_ocsp_request/2` called
+    # `apply(:"OTP-PUB-KEY", :encode, ...)` and raised `UndefinedFunctionError`
+    # on OTP 28 the first time online OCSP was used. Assert the encoder
+    # returns a DER binary that round-trips, without touching the network.
+    test "build_ocsp_request returns a DER binary that round-trips (OTP 28 regression)" do
+      leaf_der = Base.decode64!(@real_apple_signing_cert_base64)
+      intermediate_der = Base.decode64!(@real_apple_intermediate_base64)
+
+      assert {:ok, der} = ChainVerifier.build_ocsp_request(leaf_der, intermediate_der)
+      assert is_binary(der)
+      assert byte_size(der) > 0
+
+      assert {:OCSPRequest, {:TBSRequest, _, _, [{:Request, cert_id, _}], _}, _} =
+               :public_key.der_decode(:OCSPRequest, der)
+
+      # RFC 6960: CertID hash algorithm must be SHA-1; hashes are 20 bytes.
+      # The decoded record's tag name varies across OTP versions
+      # (`:AlgorithmIdentifier` on OTP 27, `:CertID_hashAlgorithm` on OTP 28);
+      # match the SHA-1 OID directly rather than the wrapper.
+      {:CertID, hash_alg, issuer_name_hash, issuer_key_hash, serial} = cert_id
+      assert elem(hash_alg, 1) == {1, 3, 14, 3, 2, 26}
+      assert byte_size(issuer_name_hash) == 20
+      assert byte_size(issuer_key_hash) == 20
+
+      {:Certificate, {:TBSCertificate, _, leaf_serial, _, _, _, _, _, _, _, _}, _, _} =
+        :public_key.pkix_decode_cert(leaf_der, :plain)
+
+      assert serial == leaf_serial
+    end
   end
 
   describe "OCSP HTTP error handling" do

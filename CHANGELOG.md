@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- `ChainVerifier.build_ocsp_request/2` no longer crashes on OTP 28. The previous implementation called `apply(:"OTP-PUB-KEY", :encode, [:OCSPRequest, ocsp_request])`, but OTP 28 split the public-key ASN.1 modules and removed `:"OTP-PUB-KEY"`. The encoder now goes through `:public_key.der_encode(:OCSPRequest, ocsp_request)`, which dispatches correctly on OTP 27 and OTP 28. Only the online OCSP path (`perform_online_checks: true`) was affected; chains verified without online checks were unaffected.
+- Corrected the rationale comment on `verify_certificate_chain/3`: the manual chain walker exists because `:public_key.pkix_path_validation/3` validates against wall-clock time and has no option to supply a custom timestamp. In offline mode (`enable_online_checks: false`), `SignedDataVerifier.get_effective_date/2` uses the payload's `signedDate` so historical receipts can still be processed after their signing certs expire — that path needs a custom timestamp. The previous comment incorrectly attributed the workaround to `:invalid_key_usage` reports on leaf certificates.
+
 ## [2.2.0] - 2026-02-01
 
 ### Fixed
