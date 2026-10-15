@@ -386,7 +386,7 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
 
   defp get_ocsp_url(cert) do
     {:OTPCertificate, tbs_cert, _, _} = cert
-    {:OTPTBSCertificate, _, _, _, _, _, _, _, _, extensions, _} = tbs_cert
+    {:OTPTBSCertificate, _, _, _, _, _, _, _, _, _, extensions} = tbs_cert
 
     case find_ocsp_url_in_extensions(extensions) do
       nil -> {:error, :no_ocsp_url}
@@ -439,10 +439,10 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
     {:TBSCertificate, _, serial_number, _, _, _, _, _, _, _, _} = tbs_cert
 
     {:Certificate, issuer_tbs, _, _} = issuer
-    {:TBSCertificate, _, _, _, issuer_name, _, _, issuer_spki, _, _, _} = issuer_tbs
+    {:TBSCertificate, _, _, _, _, _, issuer_subject, issuer_spki, _, _, _} = issuer_tbs
 
-    # Hash issuer name (DER encoded) with SHA-1
-    issuer_name_der = :public_key.der_encode(:Name, issuer_name)
+    # OCSP issuerNameHash is the SHA-1 hash of the issuer certificate's DER-encoded subject.
+    issuer_name_der = :public_key.der_encode(:Name, issuer_subject)
     issuer_name_hash = :crypto.hash(:sha, issuer_name_der)
 
     # Hash issuer public key (just the BIT STRING value, not the whole SPKI)

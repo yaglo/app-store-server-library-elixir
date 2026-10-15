@@ -12,9 +12,25 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
   - OID verification
   - Caching behavior
   """
-  use ExUnit.Case, async: true
+  # These tests change the application-wide OCSP requester.
+  use ExUnit.Case, async: false
+
+  require Record
+
+  Record.defrecordp(
+    :tbs_certificate,
+    :TBSCertificate,
+    Record.extract(:TBSCertificate, from_lib: "public_key/include/OTP-PUB-KEY.hrl")
+  )
 
   alias AppStoreServerLibrary.Verification.ChainVerifier
+
+  defmodule FailingOCSPRequester do
+    def send_ocsp_request(url, request_der) do
+      send(self(), {:ocsp_request, url, request_der})
+      {:error, {:retryable_verification_failure, "OCSP responder unavailable"}}
+    end
+  end
 
   setup tags do
     original = Application.get_env(:app_store_server_library, :ocsp_requester)
@@ -837,6 +853,47 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
 
       assert {:error, {:invalid_chain, message}} = result
       assert message =~ "signature" or message =~ "issuer"
+    end
+  end
+
+  describe "OCSP regressions" do
+    @describetag :ocsp_regression
+
+    test "sends a request to the certificate's OCSP URL and propagates requester errors" do
+      Application.put_env(:app_store_server_library, :ocsp_requester, FailingOCSPRequester)
+
+      leaf_der = Base.decode64!(@real_apple_signing_cert_base64)
+      intermediate_der = Base.decode64!(@real_apple_intermediate_base64)
+      root_der = Base.decode64!(@real_apple_root_base64)
+
+      result = ChainVerifier.check_ocsp_status(leaf_der, intermediate_der, root_der)
+
+      assert_received {:ocsp_request, "http://ocsp.apple.com/ocsp03-wwdrg602", request_der}
+      assert is_binary(request_der)
+      assert byte_size(request_der) > 0
+
+      assert result ==
+               {:error, {:retryable_verification_failure, "OCSP responder unavailable"}}
+    end
+
+    test "issuerNameHash identifies the issuer certificate's subject, not its issuer" do
+      leaf_der = Base.decode64!(@real_apple_signing_cert_base64)
+      intermediate_der = Base.decode64!(@real_apple_intermediate_base64)
+
+      {:Certificate, tbs_certificate(subject: subject, issuer: issuer), _, _} =
+        :public_key.pkix_decode_cert(intermediate_der, :plain)
+
+      # A self-signed fixture would hide a mix-up between these names.
+      refute subject == issuer
+
+      assert {:ok, der} = ChainVerifier.build_ocsp_request(leaf_der, intermediate_der)
+
+      assert {:OCSPRequest,
+              {:TBSRequest, _, _, [{:Request, {:CertID, _, issuer_name_hash, _, _}, _}], _},
+              _} = :public_key.der_decode(:OCSPRequest, der)
+
+      expected_hash = :crypto.hash(:sha, :public_key.der_encode(:Name, subject))
+      assert issuer_name_hash == expected_hash
     end
   end
 
