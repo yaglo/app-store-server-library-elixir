@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-11-10
+
+### Security
+- Online OCSP revocation checks (`enable_online_checks: true`) were silently skipped. `ChainVerifier` read the certificate's `subjectUniqueID` field instead of its extensions when looking for the OCSP responder URL; the resulting error was treated as "no OCSP URL", so `check_ocsp_status/3` returned `:ok` without contacting the responder. A revoked signing certificate would therefore have been accepted. Upgrading is recommended for anyone relying on online checks. Thanks to Evgeny Famiev (@efamiev) for the report and fix ([#2](https://github.com/yaglo/app-store-server-library-elixir/pull/2)).
+
 ### Fixed
+- `ChainVerifier.build_ocsp_request/2` computed the OCSP `issuerNameHash` from the issuer certificate's issuer name instead of its subject, producing a CertID that did not identify the certificate. This was masked by the URL extraction bug above ([#2](https://github.com/yaglo/app-store-server-library-elixir/pull/2)).
 - `ChainVerifier.build_ocsp_request/2` no longer crashes on OTP 28. The previous implementation called `apply(:"OTP-PUB-KEY", :encode, [:OCSPRequest, ocsp_request])`, but OTP 28 split the public-key ASN.1 modules and removed `:"OTP-PUB-KEY"`. The encoder now goes through `:public_key.der_encode(:OCSPRequest, ocsp_request)`, which dispatches correctly on OTP 27 and OTP 28. Only the online OCSP path (`perform_online_checks: true`) was affected; chains verified without online checks were unaffected.
 - Corrected the rationale comment on `verify_certificate_chain/3`: the manual chain walker exists because `:public_key.pkix_path_validation/3` validates against wall-clock time and has no option to supply a custom timestamp. In offline mode (`enable_online_checks: false`), `SignedDataVerifier.get_effective_date/2` uses the payload's `signedDate` so historical receipts can still be processed after their signing certs expire — that path needs a custom timestamp. The previous comment incorrectly attributed the workaround to `:invalid_key_usage` reports on leaf certificates.
 
