@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- API client: identifiers interpolated into request paths (transaction IDs, order IDs, product IDs, message and image identifiers, locales, tokens) are now percent-encoded. Previously a value containing `/`, `..`, `?` or `#` could redirect the signed request to a different App Store Server API endpoint.
+- The verified-certificate cache is now keyed on the verifier's trusted roots as well as the certificate chain. Previously a chain accepted by one verifier was served from the cache to any other verifier in the same VM, even one configured with different root certificates.
+- Online OCSP checks now fail closed. A certificate with no OCSP responder URL, or whose extensions cannot be read, is rejected with `:verification_failure` instead of being treated as not revoked.
+- An OCSP requester can no longer disable response validation by returning `{:ok, :skip_validation}`; every response is validated. OCSP requests no longer follow redirects or let the HTTP client decompress or decode the response body.
+- Signature verification now uses `JOSE.JWS.verify_strict/3` pinned to ES256.
+- Certificate chain verification now checks `keyUsage` (certificate signing on the intermediate, digital signature on the leaf) and rejects certificates carrying an unrecognized critical extension.
+- Signing keys are no longer printed when an `AppStoreServerAPIClient`, `JWSSignatureCreator` or `PromotionalOfferSignatureCreator` struct is inspected.
+- Raised the minimum `jose` to 1.11.13 and `req` to 0.6.1 to pick up fixes for published advisories (including unvalidated ECDSA signature length in `jose` and a decompression-bomb denial of service in `req`).
+
+### Fixed
+- Malformed signed data now returns `{:error, {status, message}}` instead of raising. A header or payload that is valid JSON but not an object raised `BadMapError`, non-string `x5c` entries raised `FunctionClauseError`, and an undecodable header returned a bare `Jason.DecodeError`.
+
+### Changed
+- Test suites that returned `{:ok, :skip_validation}` from a custom `:ocsp_requester` should configure the new `:ocsp_checker` setting instead; see the README.
+- `req` 0.5.x is no longer supported.
+
 ## [2.2.1] - 2026-11-10
 
 ### Security

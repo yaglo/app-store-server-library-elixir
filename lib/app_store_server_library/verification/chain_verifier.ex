@@ -12,6 +12,17 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
 
       config :app_store_server_library,
         ocsp_timeout: 30_000  # OCSP request timeout in milliseconds (default: 30 seconds)
+
+  ## Testing seams
+
+  Two optional settings exist so test suites can run without network access.
+  Neither belongs in production configuration.
+
+    * `:ocsp_requester` - a module whose `send_ocsp_request/2` replaces the HTTP
+      call to the OCSP responder. It must return `{:ok, der_binary}` or an error
+      tuple; the returned response is still fully validated.
+    * `:ocsp_checker` - a module whose `check_ocsp_status/2` replaces the whole
+      revocation check. Setting it disables revocation checking.
   """
 
   alias AppStoreServerLibrary.Cache.CertificateCache
@@ -66,7 +77,8 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
   @spec verify_chain(t(), [String.t()], boolean(), integer()) ::
           {:ok, String.t(), t()} | {:error, {atom(), String.t()}}
   def verify_chain(verifier, certificates, perform_online_checks, effective_date) do
-    metadata = %{cert_count: length(certificates), online_checks: perform_online_checks}
+    cert_count = if is_list(certificates), do: length(certificates), else: 0
+    metadata = %{cert_count: cert_count, online_checks: perform_online_checks}
 
     Telemetry.span([:app_store_server_library, :verification, :chain], metadata, fn ->
       maybe_use_cached_key(verifier, certificates, perform_online_checks, effective_date)
@@ -79,7 +91,7 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
 
   defp maybe_use_cached_key(verifier, certificates, true = _online_checks, effective_date) do
     # Use shared CertificateCache GenServer
-    case CertificateCache.get(certificates) do
+    case CertificateCache.get(cache_key(verifier, certificates)) do
       {:ok, public_key} ->
         {:ok, public_key, verifier}
 
@@ -99,11 +111,18 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
          {:ok, public_key_pem} <- extract_public_key(decoded_certs) do
       # Cache the verified public key when online checks are enabled
       if perform_online_checks do
-        CertificateCache.put(certificates, public_key_pem)
+        CertificateCache.put(cache_key(verifier, certificates), public_key_pem)
       end
 
       {:ok, public_key_pem, verifier}
     end
+  end
+
+  # A cached key is only valid for the trust configuration that verified it.
+  # Binding the key to the root set and strictness keeps a chain accepted by
+  # one verifier from being served to another verifier with different roots.
+  defp cache_key(verifier, certificates) do
+    {:chain, verifier.root_certificates, verifier.enable_strict_checks, certificates}
   end
 
   defp validate_root_certificates(%{root_certificates: []}),
@@ -111,15 +130,18 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
 
   defp validate_root_certificates(_), do: :ok
 
-  defp validate_chain_length(certificates) when length(certificates) == 3, do: :ok
+  defp validate_chain_length(certificates)
+       when is_list(certificates) and length(certificates) == 3,
+       do: :ok
 
   defp validate_chain_length(_),
     do: {:error, {:invalid_chain_length, "Certificate chain must contain exactly 3 certificates"}}
 
   defp decode_certificates(certificates) do
     results =
-      Enum.map(certificates, fn cert_b64 ->
-        Base.decode64(cert_b64)
+      Enum.map(certificates, fn
+        cert_b64 when is_binary(cert_b64) -> Base.decode64(cert_b64)
+        _ -> :error
       end)
 
     if Enum.all?(results, &match?({:ok, _}, &1)) do
@@ -165,7 +187,11 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
          :ok <- verify_issuer_relationship(intermediate_der, chain_root_der),
          :ok <- verify_issuer_relationship(leaf_der, intermediate_der),
          :ok <- verify_basic_constraints(intermediate_der, :ca),
-         :ok <- verify_basic_constraints(leaf_der, :end_entity) do
+         :ok <- verify_basic_constraints(leaf_der, :end_entity),
+         :ok <- verify_key_usage(intermediate_der, :keyCertSign),
+         :ok <- verify_key_usage(leaf_der, :digitalSignature),
+         :ok <- verify_critical_extensions(intermediate_der),
+         :ok <- verify_critical_extensions(leaf_der) do
       leaf_cert = :public_key.pkix_decode_cert(leaf_der, :otp)
       intermediate_cert = :public_key.pkix_decode_cert(intermediate_der, :otp)
       root_cert = :public_key.pkix_decode_cert(chain_root_der, :otp)
@@ -310,6 +336,76 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
     end
   end
 
+  @key_usage_oid {2, 5, 29, 15}
+  @apple_extension_arc [1, 2, 840, 113_635, 100, 6]
+  @basic_constraints_oid {2, 5, 29, 19}
+
+  # When a certificate carries keyUsage, it must permit the way the chain uses
+  # the key: signing certificates for the intermediate, signing data for the leaf.
+  defp verify_key_usage(cert_der, required_usage) do
+    case find_extension_value(cert_der, @key_usage_oid) do
+      nil ->
+        :ok
+
+      usages ->
+        if required_usage in decode_key_usage(usages) do
+          :ok
+        else
+          {:error, {:invalid_chain, "Certificate keyUsage does not permit #{required_usage}"}}
+        end
+    end
+  end
+
+  defp decode_key_usage(usages) when is_list(usages), do: usages
+
+  defp decode_key_usage(usages) when is_binary(usages),
+    do: :public_key.der_decode(:KeyUsage, usages)
+
+  # RFC 5280 §4.2: a certificate with a critical extension the verifier does
+  # not process must be rejected. The extensions processed here are
+  # basicConstraints, keyUsage, and Apple's marker extensions.
+  defp verify_critical_extensions(cert_der) do
+    unknown =
+      cert_der
+      |> extensions()
+      |> Enum.find(fn
+        {:Extension, oid, true, _} -> not processed_extension?(oid)
+        _ -> false
+      end)
+
+    case unknown do
+      nil ->
+        :ok
+
+      {:Extension, oid, _, _} ->
+        {:error, {:invalid_chain, "Unrecognized critical extension: #{inspect(oid)}"}}
+    end
+  end
+
+  defp processed_extension?(@key_usage_oid), do: true
+  defp processed_extension?(@basic_constraints_oid), do: true
+
+  defp processed_extension?(oid) when is_tuple(oid),
+    do: List.starts_with?(Tuple.to_list(oid), @apple_extension_arc)
+
+  defp processed_extension?(_), do: false
+
+  defp extensions(cert_der) do
+    {:OTPCertificate, tbs, _, _} = :public_key.pkix_decode_cert(cert_der, :otp)
+
+    case elem(tbs, 10) do
+      :asn1_NOVALUE -> []
+      exts when is_list(exts) -> exts
+    end
+  end
+
+  defp find_extension_value(cert_der, oid) do
+    Enum.find_value(extensions(cert_der), fn
+      {:Extension, ^oid, _, value} -> value
+      _ -> nil
+    end)
+  end
+
   # Skip Apple OID checks when strict checks are disabled (for test certificates)
   defp maybe_check_apple_oids(%{enable_strict_checks: false}, _decoded_certs), do: :ok
 
@@ -354,28 +450,36 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
 
   defp maybe_check_ocsp([leaf_der, intermediate_der, root_der], true) do
     # Perform OCSP checks for intermediate and leaf certificates
-    with :ok <- check_ocsp_status(intermediate_der, root_der, root_der) do
-      check_ocsp_status(leaf_der, intermediate_der, root_der)
+    with :ok <- run_ocsp_check(intermediate_der, root_der, root_der) do
+      run_ocsp_check(leaf_der, intermediate_der, root_der)
+    end
+  end
+
+  # `:ocsp_checker` replaces the whole revocation check. It exists so test
+  # suites can run the online code path without network access; it must never
+  # be configured in production.
+  defp run_ocsp_check(cert_der, issuer_der, root_der) do
+    case Application.get_env(:app_store_server_library, :ocsp_checker) do
+      nil -> check_ocsp_status(cert_der, issuer_der, root_der)
+      checker when is_atom(checker) -> checker.check_ocsp_status(cert_der, issuer_der)
     end
   end
 
   @doc """
   Performs an OCSP status check for a certificate.
+
+  Fails closed: a certificate without an OCSP responder URL, or whose
+  extensions cannot be read, is reported as a verification failure rather
+  than treated as not revoked.
   """
   @spec check_ocsp_status(binary(), binary(), binary()) :: :ok | {:error, {atom(), String.t()}}
   def check_ocsp_status(cert_der, issuer_der, _root_der) do
     cert = :public_key.pkix_decode_cert(cert_der, :otp)
 
-    case get_ocsp_url(cert) do
-      {:ok, ocsp_url} ->
-        with {:ok, ocsp_request_der} <- build_ocsp_request(cert_der, issuer_der),
-             {:ok, ocsp_response_der} <- send_ocsp_request(ocsp_url, ocsp_request_der) do
-          validate_ocsp_response(ocsp_response_der, cert_der, issuer_der)
-        end
-
-      {:error, :no_ocsp_url} ->
-        # If no OCSP URL, we can't verify - this might be acceptable
-        :ok
+    with {:ok, ocsp_url} <- get_ocsp_url(cert),
+         {:ok, ocsp_request_der} <- build_ocsp_request(cert_der, issuer_der),
+         {:ok, ocsp_response_der} <- send_ocsp_request(ocsp_url, ocsp_request_der) do
+      validate_ocsp_response(ocsp_response_der, cert_der, issuer_der)
     end
   rescue
     _ -> {:error, {:retryable_verification_failure, "OCSP check failed"}}
@@ -388,12 +492,19 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
     {:OTPCertificate, tbs_cert, _, _} = cert
     {:OTPTBSCertificate, _, _, _, _, _, _, _, _, _, extensions} = tbs_cert
 
+    extensions = if is_list(extensions), do: extensions, else: []
+
     case find_ocsp_url_in_extensions(extensions) do
-      nil -> {:error, :no_ocsp_url}
-      url -> {:ok, url}
+      nil ->
+        {:error,
+         {:verification_failure, "Certificate has no OCSP responder URL; cannot check revocation"}}
+
+      url ->
+        {:ok, url}
     end
   rescue
-    _ -> {:error, :no_ocsp_url}
+    _ ->
+      {:error, {:verification_failure, "Failed to read OCSP responder URL from certificate"}}
   end
 
   defp find_ocsp_url_in_extensions(extensions) do
@@ -488,13 +599,20 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
     end
   end
 
+  # OCSP travels over plain HTTP, so the response is attacker-influenceable
+  # until its signature is validated: do not follow redirects, and do not let
+  # Req decompress or decode the body.
   defp do_send_ocsp_request(ocsp_url, ocsp_request_der) do
     headers = [{"content-type", "application/ocsp-request"}]
 
     case Req.post(ocsp_url,
            body: ocsp_request_der,
            headers: headers,
-           receive_timeout: ocsp_timeout()
+           receive_timeout: ocsp_timeout(),
+           redirect: false,
+           retry: false,
+           compressed: false,
+           decode_body: false
          ) do
       {:ok, %Req.Response{status: 200, body: response_body}} ->
         {:ok, response_body}
@@ -510,7 +628,10 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
     end
   end
 
-  defp validate_ocsp_response(:skip_validation, _cert_der, _issuer_der), do: :ok
+  defp validate_ocsp_response(ocsp_response_der, _cert_der, _issuer_der)
+       when not is_binary(ocsp_response_der) do
+    {:error, {:retryable_verification_failure, "OCSP responder returned a non-binary response"}}
+  end
 
   defp validate_ocsp_response(ocsp_response_der, cert_der, issuer_der) do
     # Use OTP's built-in OCSP validation

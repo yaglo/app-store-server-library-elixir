@@ -11,6 +11,8 @@ defmodule AppStoreServerLibrary.Signature.PromotionalOfferSignatureCreator do
   """
 
   @enforce_keys [:decoded_key, :key_id, :bundle_id]
+  # Keep the private key out of logs, crash reports and error trackers.
+  @derive {Inspect, except: [:decoded_key]}
   defstruct [:decoded_key, :key_id, :bundle_id]
 
   @type t :: %__MODULE__{

@@ -348,4 +348,18 @@ defmodule AppStoreServerLibrary.PromotionalOfferSignatureCreatorTest do
                )
     end
   end
+
+  describe "private key redaction" do
+    test "inspecting a creator does not print the decoded key" do
+      {:ok, creator} =
+        PromotionalOfferSignatureCreator.new(
+          signing_key: File.read!("test/resources/certs/testSigningKey.p8"),
+          key_id: "keyId",
+          bundle_id: "com.example"
+        )
+
+      refute inspect(creator) =~ "ECPrivateKey"
+      assert inspect(creator) =~ "keyId"
+    end
+  end
 end

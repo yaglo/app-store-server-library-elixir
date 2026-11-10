@@ -324,4 +324,22 @@ defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
       end
     end
   end
+
+  describe "private key redaction" do
+    test "inspecting a creator does not print the signing key" do
+      pem = File.read!("test/resources/certs/testSigningKey.p8")
+      secret = pem |> String.split("\n") |> Enum.at(1)
+
+      {:ok, creator} =
+        JWSSignatureCreator.new(
+          signing_key: pem,
+          key_id: "keyId",
+          issuer_id: "issuerId",
+          bundle_id: "com.example"
+        )
+
+      refute inspect(creator) =~ secret
+      assert inspect(creator) =~ "keyId"
+    end
+  end
 end

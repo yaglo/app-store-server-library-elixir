@@ -178,11 +178,17 @@ To exercise real OCSP responders and Apple certificates, opt in to the live tag 
 mix test --include ocsp_live --include real_apple
 ```
 
-Inject a custom OCSP requester for tests by setting:
+Two settings let your own tests run the online-checks path without network access. Set them in `config/test.exs` only, never in production:
+
 ```elixir
-config :app_store_server_library, :ocsp_requester, MyOCSPMock
+# Replaces the HTTP call. `send_ocsp_request/2` returns `{:ok, der_binary}` or an
+# error tuple, and the response is still validated.
+config :app_store_server_library, :ocsp_requester, MyOCSPRequester
+
+# Replaces the whole revocation check. `check_ocsp_status/2` returns `:ok` or an
+# error tuple. This disables revocation checking.
+config :app_store_server_library, :ocsp_checker, MyOCSPChecker
 ```
-where `MyOCSPMock.send_ocsp_request/2` returns `{:ok, body}` or an error tuple.
 
 ## Environments
 
@@ -191,6 +197,8 @@ where `MyOCSPMock.send_ocsp_request/2` returns `{:ok, body}` or an error tuple.
 | `:production` | Requires `app_apple_id` |
 | `:sandbox` | Testing |
 | `:xcode` / `:local_testing` | Signature verification skipped |
+
+> **Warning:** a verifier created with `:xcode` or `:local_testing` accepts any payload without checking its signature. Use those environments for local StoreKit testing only, never for an endpoint reachable from the network.
 
 ## Batteries Included
 

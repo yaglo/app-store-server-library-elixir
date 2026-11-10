@@ -33,6 +33,8 @@ defmodule AppStoreServerLibrary.Signature.JWSSignatureCreator do
 
   """
 
+  # Keep the private key out of logs, crash reports and error trackers.
+  @derive {Inspect, except: [:signing_key]}
   @enforce_keys [:signing_key, :key_id, :issuer_id, :bundle_id]
   defstruct [:signing_key, :key_id, :issuer_id, :bundle_id]
 

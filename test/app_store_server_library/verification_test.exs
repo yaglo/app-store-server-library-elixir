@@ -48,4 +48,48 @@ defmodule AppStoreServerLibrary.VerificationTest do
                SignedDataVerifier.verify_bundle_id(verifier, "com.other.app")
     end
   end
+
+  describe "malformed signed data" do
+    setup do
+      opts = [root_certificates: [<<1>>], environment: :sandbox, bundle_id: "com.example"]
+      {:ok, offline} = SignedDataVerifier.new(opts)
+      {:ok, online} = SignedDataVerifier.new([enable_online_checks: true] ++ opts)
+      {:ok, verifiers: [offline, online]}
+    end
+
+    test "returns an error tuple instead of raising", %{verifiers: verifiers} do
+      es256 = ~s({"alg":"ES256","x5c":["AAAA","AAAA","AAAA"]})
+
+      inputs = [
+        "garbage",
+        "",
+        "a.b.c",
+        123,
+        nil,
+        jws("[1]", "{}"),
+        jws("not json", "{}"),
+        jws(~s("string"), "{}"),
+        jws(es256, ~s("string")),
+        jws(es256, "[]"),
+        jws(es256, "not json"),
+        jws(~s({"alg":"ES256","x5c":[1,2,3]}), "{}"),
+        jws(~s({"alg":"ES256","x5c":"abc"}), "{}"),
+        jws(~s({"alg":"ES256","x5c":{"a":1}}), "{}"),
+        jws(~s({"alg":"ES256","x5c":["AAAA",null,"AAAA"]}), "{}"),
+        jws(es256, ~s({"signedDate":"soon"}))
+      ]
+
+      for verifier <- verifiers, input <- inputs do
+        assert {:error, {status, message}} =
+                 SignedDataVerifier.verify_and_decode_signed_transaction(verifier, input)
+
+        assert is_atom(status)
+        assert is_binary(message)
+      end
+    end
+  end
+
+  defp jws(header, payload) do
+    Enum.map_join([header, payload, "signature"], ".", &Base.url_encode64(&1, padding: false))
+  end
 end

@@ -1116,4 +1116,80 @@ defmodule AppStoreServerLibrary.APITest do
 
     test_client
   end
+
+  describe "path segments" do
+    test "identifiers cannot change the request path, query or fragment" do
+      bypass = Bypass.open()
+      test_pid = self()
+
+      Bypass.expect(bypass, fn conn ->
+        send(test_pid, {:request, conn.request_path, conn.query_string})
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(404, ~s({"errorCode": 4040010, "errorMessage": "not found"}))
+      end)
+
+      client = bypass_client(bypass)
+
+      assert {:error, _} =
+               AppStoreServerAPIClient.get_transaction_info(client, "../lookup/X?a=1#frag")
+
+      assert_received {:request, path, query}
+      assert path == "/inApps/v1/transactions/..%2Flookup%2FX%3Fa%3D1%23frag"
+      assert query == ""
+    end
+
+    test "ordinary identifiers are sent unchanged" do
+      bypass = Bypass.open()
+      test_pid = self()
+
+      Bypass.expect(bypass, fn conn ->
+        send(test_pid, {:request, conn.request_path})
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(404, ~s({"errorCode": 4040010, "errorMessage": "not found"}))
+      end)
+
+      client = bypass_client(bypass)
+
+      AppStoreServerAPIClient.get_transaction_info(client, "2000000123456789")
+      assert_received {:request, "/inApps/v1/transactions/2000000123456789"}
+
+      AppStoreServerAPIClient.delete_default_message(client, "com.example.product_1", "en-US")
+
+      assert_received {:request, "/inApps/v1/messaging/default/com.example.product_1/en-US"}
+    end
+  end
+
+  describe "private key redaction" do
+    test "inspecting a client does not print the signing key" do
+      pem = File.read!("test/resources/certs/testSigningKey.p8")
+      secret = pem |> String.split("\n") |> Enum.at(1)
+
+      {:ok, client} =
+        AppStoreServerAPIClient.new(
+          signing_key: pem,
+          key_id: "keyId",
+          issuer_id: "issuerId",
+          bundle_id: "com.example",
+          environment: :sandbox
+        )
+
+      refute inspect(client) =~ secret
+      assert inspect(client) =~ "keyId"
+    end
+  end
+
+  defp bypass_client(bypass) do
+    %AppStoreServerAPIClient{
+      signing_key: File.read!("test/resources/certs/testSigningKey.p8"),
+      key_id: "keyId",
+      issuer_id: "issuerId",
+      bundle_id: "com.example",
+      environment: :sandbox,
+      base_url: "http://localhost:#{bypass.port}"
+    }
+  end
 end

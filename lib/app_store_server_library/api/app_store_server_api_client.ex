@@ -70,6 +70,8 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   @default_connect_timeout 30_000
   @default_receive_timeout 60_000
 
+  # Keep the private key out of logs, crash reports and error trackers.
+  @derive {Inspect, except: [:signing_key]}
   @enforce_keys [:signing_key, :key_id, :issuer_id, :bundle_id, :environment]
   defstruct [
     :base_url,
@@ -179,7 +181,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   @spec extend_subscription_renewal_date(t(), String.t(), ExtendRenewalDateRequest.t()) ::
           {:ok, ExtendRenewalDateResponse.t()} | {:error, APIException.t()}
   def extend_subscription_renewal_date(client, original_transaction_id, request) do
-    path = "/inApps/v1/subscriptions/extend/#{original_transaction_id}"
+    path = "/inApps/v1/subscriptions/extend/#{segment(original_transaction_id)}"
     make_request(client, :put, path, %{}, request, ExtendRenewalDateResponse)
   end
 
@@ -189,7 +191,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   @spec get_transaction_info(t(), String.t()) ::
           {:ok, TransactionInfoResponse.t()} | {:error, APIException.t()}
   def get_transaction_info(client, transaction_id) do
-    path = "/inApps/v1/transactions/#{transaction_id}"
+    path = "/inApps/v1/transactions/#{segment(transaction_id)}"
     make_request(client, :get, path, %{}, nil, TransactionInfoResponse)
   end
 
@@ -206,7 +208,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
         ) ::
           {:ok, HistoryResponse.t()} | {:error, APIException.t()}
   def get_transaction_history(client, transaction_id, revision \\ nil, request) do
-    path = "/inApps/v2/history/#{transaction_id}"
+    path = "/inApps/v2/history/#{segment(transaction_id)}"
     params = build_history_params(revision, request)
     make_request(client, :get, path, params, nil, HistoryResponse)
   end
@@ -217,7 +219,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   @spec get_all_subscription_statuses(t(), String.t(), [Status.t()] | nil) ::
           {:ok, StatusResponse.t()} | {:error, APIException.t()}
   def get_all_subscription_statuses(client, transaction_id, status \\ nil) do
-    path = "/inApps/v1/subscriptions/#{transaction_id}"
+    path = "/inApps/v1/subscriptions/#{segment(transaction_id)}"
 
     params =
       if status,
@@ -245,7 +247,9 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   @spec get_status_of_subscription_renewal_date_extensions(t(), String.t(), String.t()) ::
           {:ok, MassExtendRenewalDateStatusResponse.t()} | {:error, APIException.t()}
   def get_status_of_subscription_renewal_date_extensions(client, request_identifier, product_id) do
-    path = "/inApps/v1/subscriptions/extend/mass/#{product_id}/#{request_identifier}"
+    path =
+      "/inApps/v1/subscriptions/extend/mass/#{segment(product_id)}/#{segment(request_identifier)}"
+
     make_request(client, :get, path, %{}, nil, MassExtendRenewalDateStatusResponse)
   end
 
@@ -255,7 +259,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   @spec get_refund_history(t(), String.t(), String.t() | nil) ::
           {:ok, RefundHistoryResponse.t()} | {:error, APIException.t()}
   def get_refund_history(client, transaction_id, revision \\ nil) do
-    path = "/inApps/v2/refund/lookup/#{transaction_id}"
+    path = "/inApps/v2/refund/lookup/#{segment(transaction_id)}"
     params = if revision, do: %{"revision" => revision}, else: %{}
     make_request(client, :get, path, params, nil, RefundHistoryResponse)
   end
@@ -266,7 +270,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   @spec look_up_order_id(t(), String.t()) ::
           {:ok, OrderLookupResponse.t()} | {:error, APIException.t()}
   def look_up_order_id(client, order_id) do
-    path = "/inApps/v1/lookup/#{order_id}"
+    path = "/inApps/v1/lookup/#{segment(order_id)}"
     make_request(client, :get, path, %{}, nil, OrderLookupResponse)
   end
 
@@ -286,7 +290,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   @spec get_test_notification_status(t(), String.t()) ::
           {:ok, CheckTestNotificationResponse.t()} | {:error, APIException.t()}
   def get_test_notification_status(client, test_notification_token) do
-    path = "/inApps/v1/notifications/test/#{test_notification_token}"
+    path = "/inApps/v1/notifications/test/#{segment(test_notification_token)}"
     make_request(client, :get, path, %{}, nil, CheckTestNotificationResponse)
   end
 
@@ -307,7 +311,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   @spec send_consumption_information(t(), String.t(), ConsumptionRequest.t()) ::
           :ok | {:error, APIException.t()}
   def send_consumption_information(client, transaction_id, request) do
-    path = "/inApps/v2/transactions/consumption/#{transaction_id}"
+    path = "/inApps/v2/transactions/consumption/#{segment(transaction_id)}"
     make_request(client, :put, path, %{}, request, nil)
   end
 
@@ -317,7 +321,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   @spec set_app_account_token(t(), String.t(), UpdateAppAccountTokenRequest.t()) ::
           :ok | {:error, APIException.t()}
   def set_app_account_token(client, original_transaction_id, request) do
-    path = "/inApps/v1/transactions/#{original_transaction_id}/appAccountToken"
+    path = "/inApps/v1/transactions/#{segment(original_transaction_id)}/appAccountToken"
     make_request(client, :put, path, %{}, request, nil)
   end
 
@@ -327,7 +331,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   @spec get_app_transaction_info(t(), String.t()) ::
           {:ok, AppTransactionInfoResponse.t()} | {:error, APIException.t()}
   def get_app_transaction_info(client, transaction_id) do
-    path = "/inApps/v1/transactions/appTransactions/#{transaction_id}"
+    path = "/inApps/v1/transactions/appTransactions/#{segment(transaction_id)}"
     make_request(client, :get, path, %{}, nil, AppTransactionInfoResponse)
   end
 
@@ -345,7 +349,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
           :ok | {:error, APIException.t() | :invalid_png}
   def upload_image(client, image_identifier, image) do
     if valid_png?(image) do
-      path = "/inApps/v1/messaging/image/#{image_identifier}"
+      path = "/inApps/v1/messaging/image/#{segment(image_identifier)}"
       make_request(client, :put, path, %{}, image, nil, "image/png")
     else
       {:error, :invalid_png}
@@ -360,7 +364,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   """
   @spec delete_image(t(), String.t()) :: :ok | {:error, APIException.t()}
   def delete_image(client, image_identifier) do
-    path = "/inApps/v1/messaging/image/#{image_identifier}"
+    path = "/inApps/v1/messaging/image/#{segment(image_identifier)}"
     make_request(client, :delete, path, %{}, nil, nil)
   end
 
@@ -380,7 +384,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   @spec upload_message(t(), String.t(), UploadMessageRequestBody.t()) ::
           :ok | {:error, APIException.t()}
   def upload_message(client, message_identifier, request) do
-    path = "/inApps/v1/messaging/message/#{message_identifier}"
+    path = "/inApps/v1/messaging/message/#{segment(message_identifier)}"
     make_request(client, :put, path, %{}, request, nil)
   end
 
@@ -389,7 +393,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   """
   @spec delete_message(t(), String.t()) :: :ok | {:error, APIException.t()}
   def delete_message(client, message_identifier) do
-    path = "/inApps/v1/messaging/message/#{message_identifier}"
+    path = "/inApps/v1/messaging/message/#{segment(message_identifier)}"
     make_request(client, :delete, path, %{}, nil, nil)
   end
 
@@ -409,7 +413,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   @spec configure_default_message(t(), String.t(), String.t(), DefaultConfigurationRequest.t()) ::
           :ok | {:error, APIException.t()}
   def configure_default_message(client, product_id, locale, request) do
-    path = "/inApps/v1/messaging/default/#{product_id}/#{locale}"
+    path = "/inApps/v1/messaging/default/#{segment(product_id)}/#{segment(locale)}"
     make_request(client, :put, path, %{}, request, nil)
   end
 
@@ -418,7 +422,7 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   """
   @spec delete_default_message(t(), String.t(), String.t()) :: :ok | {:error, APIException.t()}
   def delete_default_message(client, product_id, locale) do
-    path = "/inApps/v1/messaging/default/#{product_id}/#{locale}"
+    path = "/inApps/v1/messaging/default/#{segment(product_id)}/#{segment(locale)}"
     make_request(client, :delete, path, %{}, nil, nil)
   end
 
@@ -625,6 +629,14 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   defp handle_bang_result({:ok, response}), do: response
   defp handle_bang_result(:ok), do: :ok
   defp handle_bang_result({:error, exception}), do: raise(exception)
+
+  # Identifiers are interpolated into the request path and often originate
+  # from a client device. Percent-encoding everything outside the unreserved
+  # set keeps a value such as "../other" or "id?x=1" from changing which
+  # endpoint the signed request reaches.
+  defp segment(value) do
+    value |> to_string() |> URI.encode(&URI.char_unreserved?/1)
+  end
 
   defp get_base_url(:production), do: {:ok, "https://api.storekit.itunes.apple.com"}
   defp get_base_url(:sandbox), do: {:ok, "https://api.storekit-sandbox.itunes.apple.com"}

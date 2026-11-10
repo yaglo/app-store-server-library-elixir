@@ -12,6 +12,12 @@ Application.put_env(:app_store_server_library, :environment, :test)
 
 Application.put_env(
   :app_store_server_library,
+  :ocsp_checker,
+  AppStoreServerLibrary.TestOCSPMock
+)
+
+Application.put_env(
+  :app_store_server_library,
   :ocsp_requester,
   AppStoreServerLibrary.TestOCSPMock
 )

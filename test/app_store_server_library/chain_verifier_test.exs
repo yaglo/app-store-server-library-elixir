@@ -23,6 +23,7 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
     Record.extract(:TBSCertificate, from_lib: "public_key/include/OTP-PUB-KEY.hrl")
   )
 
+  alias AppStoreServerLibrary.Cache.CertificateCache
   alias AppStoreServerLibrary.Verification.ChainVerifier
 
   defmodule FailingOCSPRequester do
@@ -32,15 +33,22 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
     end
   end
 
+  defmodule SkipValidationRequester do
+    def send_ocsp_request(_url, _request_der), do: {:ok, :skip_validation}
+  end
+
   setup tags do
     original = Application.get_env(:app_store_server_library, :ocsp_requester)
+    original_checker = Application.get_env(:app_store_server_library, :ocsp_checker)
 
     if tags[:ocsp_live] do
       Application.delete_env(:app_store_server_library, :ocsp_requester)
+      Application.delete_env(:app_store_server_library, :ocsp_checker)
     end
 
     on_exit(fn ->
       Application.put_env(:app_store_server_library, :ocsp_requester, original)
+      Application.put_env(:app_store_server_library, :ocsp_checker, original_checker)
     end)
 
     :ok
@@ -627,15 +635,17 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
     end
 
     @tag :ocsp
-    test "check_ocsp_status handles certificates without OCSP URL" do
+    test "check_ocsp_status rejects certificates without OCSP URL" do
       # Test certificates don't have OCSP URLs
       leaf_der = Base.decode64!(@leaf_cert_base64)
       intermediate_der = Base.decode64!(@intermediate_ca_base64)
       root_der = Base.decode64!(@root_ca_base64)
 
-      # Should return :ok when no OCSP URL is present
-      result = ChainVerifier.check_ocsp_status(leaf_der, intermediate_der, root_der)
-      assert result == :ok
+      # Fails closed: revocation cannot be checked without a responder URL
+      assert {:error, {:verification_failure, message}} =
+               ChainVerifier.check_ocsp_status(leaf_der, intermediate_der, root_der)
+
+      assert message =~ "no OCSP responder URL"
     end
 
     @tag :ocsp
@@ -907,8 +917,9 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
       # This exercises get_ocsp_url internally through check_ocsp_status
       result = ChainVerifier.check_ocsp_status(leaf_der, intermediate_der, root_der)
 
-      # Should succeed (OCSP URL found and request made)
-      assert result == :ok or match?({:error, {:http_error, _}}, result)
+      # The URL was found and a request attempted: the test requester's error comes back
+      assert result ==
+               {:error, {:retryable_verification_failure, "OCSP requests are disabled in tests"}}
     end
 
     test "handles certificate without AIA extension" do
@@ -917,9 +928,9 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
       intermediate_der = Base.decode64!(@intermediate_ca_base64)
       root_der = Base.decode64!(@root_ca_base64)
 
-      # Should return :ok when no OCSP URL (graceful fallback)
-      result = ChainVerifier.check_ocsp_status(leaf_der, intermediate_der, root_der)
-      assert result == :ok
+      # Fails closed rather than treating the certificate as not revoked
+      assert {:error, {:verification_failure, _}} =
+               ChainVerifier.check_ocsp_status(leaf_der, intermediate_der, root_der)
     end
   end
 
@@ -1172,5 +1183,144 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
       # Should return error, not crash
       assert {:error, _reason} = result
     end
+  end
+
+  describe "certificate cache isolation" do
+    setup do
+      CertificateCache.clear()
+      on_exit(fn -> CertificateCache.clear() end)
+    end
+
+    test "a chain cached by one verifier is not served to a verifier with other roots" do
+      chain = [
+        @real_apple_signing_cert_base64,
+        @real_apple_intermediate_base64,
+        @real_apple_root_base64
+      ]
+
+      apple = ChainVerifier.new([Base.decode64!(@real_apple_root_base64)], true)
+      other = ChainVerifier.new([Base.decode64!(@root_ca_base64)], true)
+
+      assert {:ok, key, _} = ChainVerifier.verify_chain(apple, chain, true, @effective_date)
+
+      # Let the cache write (a cast) land before the second verifier asks.
+      assert %{size: 1} = CertificateCache.stats()
+
+      assert {:error, {:invalid_chain, _}} =
+               ChainVerifier.verify_chain(other, chain, true, @effective_date)
+
+      # The verifier that did the work still gets its cached key.
+      assert {:ok, ^key, _} = ChainVerifier.verify_chain(apple, chain, true, @effective_date)
+    end
+  end
+
+  describe "OCSP response handling" do
+    test "a requester cannot switch off response validation" do
+      Application.put_env(:app_store_server_library, :ocsp_requester, SkipValidationRequester)
+
+      assert {:error, {:retryable_verification_failure, _}} =
+               ChainVerifier.check_ocsp_status(
+                 Base.decode64!(@real_apple_signing_cert_base64),
+                 Base.decode64!(@real_apple_intermediate_base64),
+                 Base.decode64!(@real_apple_root_base64)
+               )
+    end
+  end
+
+  describe "key usage and critical extensions" do
+    test "the real Apple chain still passes key usage and critical extension checks" do
+      verifier = ChainVerifier.new([Base.decode64!(@real_apple_root_base64)], true)
+
+      chain = [
+        @real_apple_signing_cert_base64,
+        @real_apple_intermediate_base64,
+        @real_apple_root_base64
+      ]
+
+      assert {:ok, _key, _} = ChainVerifier.verify_chain(verifier, chain, false, @effective_date)
+    end
+
+    test "rejects an intermediate whose keyUsage does not allow signing certificates" do
+      {verifier, chain} =
+        generated_chain(intermediate_key_usage: [:digitalSignature], leaf_extensions: [])
+
+      assert {:error, {:invalid_chain, message}} =
+               ChainVerifier.verify_chain(verifier, chain, false, System.system_time(:second))
+
+      assert message =~ "keyUsage"
+    end
+
+    test "rejects a leaf whose keyUsage does not allow signing data" do
+      {verifier, chain} =
+        generated_chain(
+          intermediate_key_usage: [:keyCertSign],
+          leaf_extensions: [key_usage: X509.Certificate.Extension.key_usage([:keyEncipherment])]
+        )
+
+      assert {:error, {:invalid_chain, message}} =
+               ChainVerifier.verify_chain(verifier, chain, false, System.system_time(:second))
+
+      assert message =~ "keyUsage"
+    end
+
+    test "rejects a certificate with an unrecognized critical extension" do
+      unknown = {:Extension, {1, 2, 3, 4, 5}, true, <<5, 0>>}
+
+      {verifier, chain} =
+        generated_chain(
+          intermediate_key_usage: [:keyCertSign],
+          leaf_extensions: [
+            key_usage: X509.Certificate.Extension.key_usage([:digitalSignature]),
+            unknown: unknown
+          ]
+        )
+
+      assert {:error, {:invalid_chain, message}} =
+               ChainVerifier.verify_chain(verifier, chain, false, System.system_time(:second))
+
+      assert message =~ "critical extension"
+    end
+  end
+
+  # Builds a throwaway root -> intermediate -> leaf chain and a strict verifier
+  # that trusts its root.
+  defp generated_chain(opts) do
+    alias X509.Certificate.Extension
+
+    root_key = X509.PrivateKey.new_ec(:secp256r1)
+    root = X509.Certificate.self_signed(root_key, "/CN=Test Root", template: :root_ca)
+
+    intermediate_key = X509.PrivateKey.new_ec(:secp256r1)
+
+    intermediate =
+      X509.Certificate.new(
+        X509.PublicKey.derive(intermediate_key),
+        "/CN=Test Intermediate",
+        root,
+        root_key,
+        extensions: [
+          basic_constraints: Extension.basic_constraints(true, 0),
+          key_usage: Extension.key_usage(Keyword.fetch!(opts, :intermediate_key_usage))
+        ]
+      )
+
+    leaf_key = X509.PrivateKey.new_ec(:secp256r1)
+
+    leaf =
+      X509.Certificate.new(
+        X509.PublicKey.derive(leaf_key),
+        "/CN=Test Leaf",
+        intermediate,
+        intermediate_key,
+        extensions:
+          [basic_constraints: Extension.basic_constraints(false)] ++
+            Keyword.fetch!(opts, :leaf_extensions)
+      )
+
+    [leaf_der, intermediate_der, root_der] =
+      Enum.map([leaf, intermediate, root], &X509.Certificate.to_der/1)
+
+    verifier = ChainVerifier.new([root_der], true)
+    {verifier, Enum.map([leaf_der, intermediate_der, root_der], &Base.encode64/1)}
   end
 end

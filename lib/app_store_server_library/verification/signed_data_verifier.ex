@@ -11,6 +11,14 @@ defmodule AppStoreServerLibrary.Verification.SignedDataVerifier do
 
   It performs certificate chain verification using the x5c header from JWS tokens
   and validates that the data matches the expected environment and bundle ID.
+
+  ## Security
+
+  A verifier created with `environment: :xcode` or `environment: :local_testing`
+  does **not** verify signatures or certificate chains: it decodes whatever it is
+  given. Those environments exist for local StoreKit testing only. Never use them
+  for a verifier that handles requests from the network, such as a production
+  webhook endpoint.
   """
 
   alias AppStoreServerLibrary.Models.{
@@ -289,26 +297,31 @@ defmodule AppStoreServerLibrary.Verification.SignedDataVerifier do
     end
   end
 
-  defp peek_header(signed_obj) do
-    header_json = JOSE.JWS.peek_protected(signed_obj)
-    Jason.decode(header_json)
-  rescue
-    ArgumentError ->
-      {:error, {:verification_failure, "Failed to decode signed object: invalid format"}}
+  @invalid_format {:error,
+                   {:verification_failure, "Failed to decode signed object: invalid format"}}
 
-    ErlangError ->
-      {:error, {:verification_failure, "Failed to decode signed object: invalid format"}}
+  defp peek_header(signed_obj) when is_binary(signed_obj) do
+    signed_obj |> JOSE.JWS.peek_protected() |> decode_json_object()
+  rescue
+    _ -> @invalid_format
   end
 
-  defp peek_payload(signed_obj) do
-    payload_json = JOSE.JWS.peek_payload(signed_obj)
-    Jason.decode(payload_json)
-  rescue
-    ArgumentError ->
-      {:error, {:verification_failure, "Failed to decode signed object: invalid format"}}
+  defp peek_header(_signed_obj), do: @invalid_format
 
-    ErlangError ->
-      {:error, {:verification_failure, "Failed to decode signed object: invalid format"}}
+  defp peek_payload(signed_obj) do
+    signed_obj |> JOSE.JWS.peek_payload() |> decode_json_object()
+  rescue
+    _ -> @invalid_format
+  end
+
+  # The header and payload are attacker-supplied until the signature is
+  # verified, so anything other than a JSON object is rejected here rather
+  # than raising further down.
+  defp decode_json_object(json) do
+    case Jason.decode(json) do
+      {:ok, %{} = object} -> {:ok, object}
+      _ -> @invalid_format
+    end
   end
 
   @expected_algorithm "ES256"
@@ -316,8 +329,14 @@ defmodule AppStoreServerLibrary.Verification.SignedDataVerifier do
 
   # Validate algorithm and x5c header together, matching Swift's approach
   defp validate_jwt_headers(algorithm, x5c_header)
-       when algorithm == @expected_algorithm and length(x5c_header) == @expected_chain_length,
-       do: :ok
+       when algorithm == @expected_algorithm and is_list(x5c_header) and
+              length(x5c_header) == @expected_chain_length do
+    if Enum.all?(x5c_header, &is_binary/1) do
+      :ok
+    else
+      {:error, {:invalid_certificate, "x5c entries must be Base64 strings"}}
+    end
+  end
 
   defp validate_jwt_headers(algorithm, _x5c_header) when algorithm != @expected_algorithm,
     do: {:error, {:verification_failure, "Algorithm was not ES256"}}
@@ -348,16 +367,14 @@ defmodule AppStoreServerLibrary.Verification.SignedDataVerifier do
   defp verify_signature(signed_obj, public_key_pem) do
     jwk = JOSE.JWK.from_pem(public_key_pem)
 
-    case JOSE.JWS.verify(jwk, signed_obj) do
+    # verify_strict pins the accepted algorithm instead of trusting the one
+    # named in the token's own header.
+    case JOSE.JWS.verify_strict(jwk, [@expected_algorithm], signed_obj) do
       {true, _payload, _jws} -> :ok
-      {false, _, _} -> {:error, {:verification_failure, "Signature verification failed"}}
+      _ -> {:error, {:verification_failure, "Signature verification failed"}}
     end
   rescue
-    ArgumentError ->
-      {:error, {:verification_failure, "Signature verification failed: invalid key"}}
-
-    ErlangError ->
-      {:error, {:verification_failure, "Signature verification failed"}}
+    _ -> {:error, {:verification_failure, "Signature verification failed"}}
   end
 
   @doc false

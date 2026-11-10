@@ -54,11 +54,15 @@ defmodule AppStoreServerLibrary.Cache.CertificateCache do
   end
 
   @doc """
-  Gets a cached public key for the given certificates.
+  Gets a cached public key for the given cache key.
+
+  `ChainVerifier` uses a key that combines the certificate chain with the
+  verifier's trusted roots, so an entry is only ever returned to a verifier
+  with the same trust configuration as the one that stored it.
 
   Returns `{:ok, public_key_pem}` if found and not expired, `:miss` otherwise.
   """
-  @spec get([String.t()], GenServer.server()) :: {:ok, String.t()} | :miss
+  @spec get(term(), GenServer.server()) :: {:ok, String.t()} | :miss
   def get(certificates, server \\ __MODULE__) do
     GenServer.call(server, {:get, certificates})
   end
@@ -68,7 +72,7 @@ defmodule AppStoreServerLibrary.Cache.CertificateCache do
 
   The entry will expire after the configured TTL.
   """
-  @spec put([String.t()], String.t(), GenServer.server()) :: :ok
+  @spec put(term(), String.t(), GenServer.server()) :: :ok
   def put(certificates, public_key_pem, server \\ __MODULE__) do
     GenServer.cast(server, {:put, certificates, public_key_pem})
   end
