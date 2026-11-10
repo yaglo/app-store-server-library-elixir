@@ -82,9 +82,9 @@ defmodule AppStoreServerLibrary.MixProject do
   defp deps do
     [
       # JWT/JWS signing and verification
-      {:jose, "~> 1.11"},
+      {:jose, "~> 1.11 and >= 1.11.13"},
       # HTTP client
-      {:req, "~> 0.5"},
+      {:req, ">= 0.6.1 and < 1.0.0"},
       # JSON encoding/decoding
       {:jason, "~> 1.4"},
       # UUID generation
