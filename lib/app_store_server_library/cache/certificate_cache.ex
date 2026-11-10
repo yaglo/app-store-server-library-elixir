@@ -64,7 +64,7 @@ defmodule AppStoreServerLibrary.Cache.CertificateCache do
   """
   @spec get(term(), GenServer.server()) :: {:ok, String.t()} | :miss
   def get(certificates, server \\ __MODULE__) do
-    GenServer.call(server, {:get, certificates})
+    GenServer.call(server, {:get, compute_cache_key(certificates)})
   end
 
   @doc """
@@ -74,7 +74,7 @@ defmodule AppStoreServerLibrary.Cache.CertificateCache do
   """
   @spec put(term(), String.t(), GenServer.server()) :: :ok
   def put(certificates, public_key_pem, server \\ __MODULE__) do
-    GenServer.cast(server, {:put, certificates, public_key_pem})
+    GenServer.cast(server, {:put, compute_cache_key(certificates), public_key_pem})
   end
 
   @doc """
@@ -125,8 +125,7 @@ defmodule AppStoreServerLibrary.Cache.CertificateCache do
   end
 
   @impl true
-  def handle_call({:get, certificates}, _from, state) do
-    cache_key = compute_cache_key(certificates)
+  def handle_call({:get, cache_key}, _from, state) do
     now = System.monotonic_time(:second)
 
     result =
@@ -161,8 +160,7 @@ defmodule AppStoreServerLibrary.Cache.CertificateCache do
   end
 
   @impl true
-  def handle_cast({:put, certificates, public_key_pem}, state) do
-    cache_key = compute_cache_key(certificates)
+  def handle_cast({:put, cache_key, public_key_pem}, state) do
     now = System.monotonic_time(:second)
     expiration = now + state.ttl_seconds
 
@@ -173,6 +171,8 @@ defmodule AppStoreServerLibrary.Cache.CertificateCache do
 
   # Private helpers
 
+  # Runs in the calling process so hashing never queues behind the cache
+  # process, and only the 32-byte digest is sent to it.
   defp compute_cache_key(certificates) do
     :crypto.hash(:sha256, :erlang.term_to_binary(certificates))
   end

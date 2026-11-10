@@ -307,8 +307,7 @@ defmodule AppStoreServerLibrary.X509VerificationTest do
         ChainVerifier.verify_chain(verifier, certs, false, @effective_date)
 
       # Verify the PEM can be parsed by JOSE
-      jwk = JOSE.JWK.from_pem(public_key_pem)
-      assert jwk != nil
+      assert %JOSE.JWK{} = JOSE.JWK.from_pem(public_key_pem)
     end
   end
 

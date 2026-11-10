@@ -186,8 +186,6 @@ defmodule AppStoreServerLibrary.Utility.ReceiptUtility do
     end
   end
 
-  defp find_nested_octet_string(_), do: {:error, :receipt_data_not_found}
-
   defp search_octet_string_element({4, [{4, receipt_data}]}), do: {:ok, receipt_data}
 
   defp search_octet_string_element({4, receipt_data}) when is_binary(receipt_data),

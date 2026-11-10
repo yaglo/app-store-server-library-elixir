@@ -80,7 +80,10 @@ defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
       refute Map.has_key?(payload, "exp")
       assert payload["aud"] == "promotional-offer"
       assert payload["bid"] == "bundleId"
-      assert is_binary(payload["nonce"])
+
+      assert payload["nonce"] =~
+               ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/
+
       assert payload["productId"] == "productId"
       assert payload["offerIdentifier"] == "offerIdentifier"
       assert payload["transactionId"] == "transactionId"
@@ -130,7 +133,7 @@ defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
         JWSSignatureCreator.create_promotional_offer_v2_signature(
           creator,
           "productId",
-          nil,
+          invalid_argument(),
           "transactionId"
         )
       end
@@ -150,7 +153,7 @@ defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
       assert_raise FunctionClauseError, fn ->
         JWSSignatureCreator.create_promotional_offer_v2_signature(
           creator,
-          nil,
+          invalid_argument(),
           "offerIdentifier",
           "transactionId"
         )
@@ -218,7 +221,7 @@ defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
           creator,
           "productId",
           true,
-          nil
+          invalid_argument()
         )
       end
     end
@@ -238,7 +241,7 @@ defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
         JWSSignatureCreator.create_introductory_offer_eligibility_signature(
           creator,
           "productId",
-          nil,
+          invalid_argument(),
           "transactionId"
         )
       end
@@ -258,7 +261,7 @@ defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
       assert_raise FunctionClauseError, fn ->
         JWSSignatureCreator.create_introductory_offer_eligibility_signature(
           creator,
-          nil,
+          invalid_argument(),
           true,
           "transactionId"
         )
@@ -320,7 +323,7 @@ defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
         )
 
       assert_raise FunctionClauseError, fn ->
-        JWSSignatureCreator.create_advanced_commerce_signature(creator, nil)
+        JWSSignatureCreator.create_advanced_commerce_signature(creator, invalid_argument())
       end
     end
   end
@@ -342,4 +345,8 @@ defmodule AppStoreServerLibrary.JWSSignatureCreatorTest do
       assert inspect(creator) =~ "keyId"
     end
   end
+
+  # Returns nil without the compiler knowing its type, so the tests can pass a
+  # deliberately wrong argument without tripping the type checker.
+  defp invalid_argument, do: Process.get({__MODULE__, :invalid_argument})
 end

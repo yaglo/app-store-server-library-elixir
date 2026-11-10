@@ -16,7 +16,6 @@ defmodule AppStoreServerLibrary.RetentionMessagingTest do
       response_body = %RealtimeResponseBody{message: message}
 
       # Test that the struct is properly constructed
-      refute is_nil(response_body.message)
       assert response_body.message.message_identifier == message_id
       assert is_nil(response_body.alternate_product)
       assert is_nil(response_body.promotional_offer)
@@ -34,7 +33,6 @@ defmodule AppStoreServerLibrary.RetentionMessagingTest do
       response_body = %RealtimeResponseBody{alternate_product: alternate_product}
 
       assert is_nil(response_body.message)
-      refute is_nil(response_body.alternate_product)
       assert response_body.alternate_product.message_identifier == message_id
       assert response_body.alternate_product.product_id == product_id
       assert is_nil(response_body.promotional_offer)
@@ -53,7 +51,6 @@ defmodule AppStoreServerLibrary.RetentionMessagingTest do
 
       assert is_nil(response_body.message)
       assert is_nil(response_body.alternate_product)
-      refute is_nil(response_body.promotional_offer)
       assert response_body.promotional_offer.message_identifier == message_id
       assert response_body.promotional_offer.promotional_offer_signature_v2 == signature_v2
       assert is_nil(response_body.promotional_offer.promotional_offer_signature_v1)
@@ -83,10 +80,8 @@ defmodule AppStoreServerLibrary.RetentionMessagingTest do
 
       assert is_nil(response_body.message)
       assert is_nil(response_body.alternate_product)
-      refute is_nil(response_body.promotional_offer)
       assert response_body.promotional_offer.message_identifier == message_id
       assert is_nil(response_body.promotional_offer.promotional_offer_signature_v2)
-      refute is_nil(response_body.promotional_offer.promotional_offer_signature_v1)
 
       v1 = response_body.promotional_offer.promotional_offer_signature_v1
       assert v1.encoded_signature == "base64encodedSignature"

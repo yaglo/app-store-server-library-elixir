@@ -12,8 +12,6 @@ defmodule AppStoreServerLibrary.API.AppStoreServerAPIClient do
   - Retention messaging (images and messages)
   """
 
-  require Logger
-
   # Use Application.spec to get version at runtime, avoiding Mix dependency in releases
   defp library_version do
     case Application.spec(:app_store_server_library, :vsn) do

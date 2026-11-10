@@ -188,10 +188,8 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
          :ok <- verify_issuer_relationship(leaf_der, intermediate_der),
          :ok <- verify_basic_constraints(intermediate_der, :ca),
          :ok <- verify_basic_constraints(leaf_der, :end_entity),
-         :ok <- verify_key_usage(intermediate_der, :keyCertSign),
-         :ok <- verify_key_usage(leaf_der, :digitalSignature),
-         :ok <- verify_critical_extensions(intermediate_der),
-         :ok <- verify_critical_extensions(leaf_der) do
+         :ok <- verify_extension_policy(intermediate_der, :keyCertSign),
+         :ok <- verify_extension_policy(leaf_der, :digitalSignature) do
       leaf_cert = :public_key.pkix_decode_cert(leaf_der, :otp)
       intermediate_cert = :public_key.pkix_decode_cert(intermediate_der, :otp)
       root_cert = :public_key.pkix_decode_cert(chain_root_der, :otp)
@@ -340,14 +338,23 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
   @apple_extension_arc [1, 2, 840, 113_635, 100, 6]
   @basic_constraints_oid {2, 5, 29, 19}
 
+  # Decodes the certificate once and applies both extension rules to it.
+  defp verify_extension_policy(cert_der, required_usage) do
+    extensions = extensions(cert_der)
+
+    with :ok <- verify_key_usage(extensions, required_usage) do
+      verify_critical_extensions(extensions)
+    end
+  end
+
   # When a certificate carries keyUsage, it must permit the way the chain uses
   # the key: signing certificates for the intermediate, signing data for the leaf.
-  defp verify_key_usage(cert_der, required_usage) do
-    case find_extension_value(cert_der, @key_usage_oid) do
+  defp verify_key_usage(extensions, required_usage) do
+    case List.keyfind(extensions, @key_usage_oid, 1) do
       nil ->
         :ok
 
-      usages ->
+      {:Extension, _, _, usages} ->
         if required_usage in decode_key_usage(usages) do
           :ok
         else
@@ -361,14 +368,12 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
   defp decode_key_usage(usages) when is_binary(usages),
     do: :public_key.der_decode(:KeyUsage, usages)
 
-  # RFC 5280 §4.2: a certificate with a critical extension the verifier does
-  # not process must be rejected. The extensions processed here are
+  # RFC 5280 section 4.2: a certificate with a critical extension the verifier
+  # does not process must be rejected. The extensions processed here are
   # basicConstraints, keyUsage, and Apple's marker extensions.
-  defp verify_critical_extensions(cert_der) do
+  defp verify_critical_extensions(extensions) do
     unknown =
-      cert_der
-      |> extensions()
-      |> Enum.find(fn
+      Enum.find(extensions, fn
         {:Extension, oid, true, _} -> not processed_extension?(oid)
         _ -> false
       end)
@@ -397,13 +402,6 @@ defmodule AppStoreServerLibrary.Verification.ChainVerifier do
       :asn1_NOVALUE -> []
       exts when is_list(exts) -> exts
     end
-  end
-
-  defp find_extension_value(cert_der, oid) do
-    Enum.find_value(extensions(cert_der), fn
-      {:Extension, ^oid, _, value} -> value
-      _ -> nil
-    end)
   end
 
   # Skip Apple OID checks when strict checks are disabled (for test certificates)

@@ -193,10 +193,19 @@ defmodule AppStoreServerLibrary.Signature.JWSSignatureCreator do
     _, _ -> {:error, :invalid_pem}
   end
 
+  # RFC 9562 version 4 UUID in the canonical lowercase 8-4-4-4-12 form.
+  defp uuid4 do
+    <<a::48, _::4, b::12, _::2, c::62>> = :crypto.strong_rand_bytes(16)
+
+    <<p1::binary-size(8), p2::binary-size(4), p3::binary-size(4), p4::binary-size(4),
+      p5::binary-size(12)>> = Base.encode16(<<a::48, 4::4, b::12, 2::2, c::62>>, case: :lower)
+
+    Enum.join([p1, p2, p3, p4, p5], "-")
+  end
+
   # Private: creates a signed JWT with the given audience and claims
   defp create_signature(creator, audience, feature_claims) do
-    # UUID.uuid4() generates a cryptographically secure random UUID v4.
-    # This provides 122 bits of randomness from :crypto.strong_rand_bytes/1,
+    # The nonce is a random UUID v4: 122 bits from :crypto.strong_rand_bytes/1,
     # which is sufficient for nonce uniqueness and replay attack prevention.
     claims =
       Map.merge(feature_claims, %{
@@ -204,7 +213,7 @@ defmodule AppStoreServerLibrary.Signature.JWSSignatureCreator do
         "iss" => creator.issuer_id,
         "aud" => audience,
         "iat" => DateTime.utc_now() |> DateTime.to_unix(),
-        "nonce" => UUID.uuid4()
+        "nonce" => uuid4()
       })
 
     jwk = JOSE.JWK.from_pem(creator.signing_key)

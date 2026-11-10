@@ -80,7 +80,6 @@ defmodule AppStoreServerLibrary.Verification.Validator do
   defp valid_type?(value, :map), do: is_map(value)
   defp valid_type?(_value, _type), do: false
 
-  defp field_type_label(:any), do: "any"
   defp field_type_label(:atom_or_string), do: "atom or string"
   defp field_type_label(:integer), do: "integer"
   defp field_type_label(:boolean), do: "boolean"

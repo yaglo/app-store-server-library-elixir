@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Test suites that returned `{:ok, :skip_validation}` from a custom `:ocsp_requester` should configure the new `:ocsp_checker` setting instead; see the README.
 - `req` 0.5.x is no longer supported.
+- Dropped the `uuid` and `x509` dependencies. Signature nonces are now generated in-library (still random UUID v4 from `:crypto.strong_rand_bytes/1`), and `x509` was not used at runtime. This also removes the deprecation warnings those packages print when compiled on recent Elixir versions.
+- The library and its test suite now compile without warnings on Elixir 1.18 through 1.20.
 
 ## [2.2.1] - 2026-11-10
 

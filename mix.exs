@@ -7,6 +7,7 @@ defmodule AppStoreServerLibrary.MixProject do
   def project do
     [
       app: :app_store_server_library,
+      test_ignore_filters: [&String.starts_with?(&1, "test/support/")],
       version: @version,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
@@ -87,10 +88,6 @@ defmodule AppStoreServerLibrary.MixProject do
       {:req, ">= 0.6.1 and < 1.0.0"},
       # JSON encoding/decoding
       {:jason, "~> 1.4"},
-      # UUID generation
-      {:uuid, "~> 1.1"},
-      # X.509 certificate handling (for chain verification)
-      {:x509, "~> 0.9"},
       # HTTP mocking for tests
       {:bypass, "~> 2.1", only: :test},
       # Documentation generation

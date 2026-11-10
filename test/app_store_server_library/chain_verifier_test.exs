@@ -506,8 +506,7 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
         )
 
       # Verify the PEM can be parsed by JOSE
-      jwk = JOSE.JWK.from_pem(public_key_pem)
-      assert jwk != nil
+      assert %JOSE.JWK{} = JOSE.JWK.from_pem(public_key_pem)
     end
   end
 
@@ -1228,6 +1227,19 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
   end
 
   describe "key usage and critical extensions" do
+    # Fixture chains generated with openssl, valid from 2026-11-10 to 2126.
+    # Root and "ok" intermediate carry keyUsage keyCertSign + cRLSign.
+    @usage_root_base64 "MIIBPDCB4qADAgECAgEBMAoGCCqGSM49BAMCMBQxEjAQBgNVBAMMCVRlc3QgUm9vdDAgFw0yNjExMTAxOTM0MjRaGA8yMTI2MTAxNzE5MzQyNFowFDESMBAGA1UEAwwJVGVzdCBSb290MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEb1lIFnBg7kWhag5FKokWNpDrC74W+4qZUY150uS4V+FJlZizWv2/vaoIQM39F2ilILc7vv1lOUT+f7Je3YRvr6MjMCEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwCgYIKoZIzj0EAwIDSQAwRgIhALWy8LTJeqDrcfK4XlsrSvcfogSvgu2FaqAdoEtS44LgAiEA+jUPbwjbAZH1WPv+Z9+ryTK4EAxb/q0LatuVfHf+UYA="
+    @usage_intermediate_base64 "MIIBRTCB7KADAgECAgECMAkGByqGSM49BAEwFDESMBAGA1UEAwwJVGVzdCBSb290MCAXDTI2MTExMDE5MzQyNFoYDzIxMjYxMDE3MTkzNDI0WjAcMRowGAYDVQQDDBFUZXN0IEludGVybWVkaWF0ZTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABAgJK3GNcZxdvd+6ZkWX6Aa/1+CP06FyjDqd5fMGWKw7J6ZqnE0rtRu6Utrd/xI4NF6DocMEUQg4WsHCe5DEWz6jJjAkMBIGA1UdEwEB/wQIMAYBAf8CAQAwDgYDVR0PAQH/BAQDAgEGMAkGByqGSM49BAEDSQAwRgIhAJCNLNdNhsRud7QjyEqg2UlnhjOw+gcLRSkjNKZS91HFAiEAvDR8mboe8cNoUVwBihWuaZumTpnEmTFWUa9qkV93JdQ="
+    # Intermediate whose keyUsage is digitalSignature only, and a leaf it issued.
+    @usage_intermediate_no_cert_sign_base64 "MIIBRTCB7KADAgECAgEDMAkGByqGSM49BAEwFDESMBAGA1UEAwwJVGVzdCBSb290MCAXDTI2MTExMDE5MzQyNFoYDzIxMjYxMDE3MTkzNDI0WjAcMRowGAYDVQQDDBFUZXN0IEludGVybWVkaWF0ZTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABJMo0p5jGwGHq67jiMYpwwW3M2eyZTvrWbdpD2HPaQVqXIoUY80RCs89MvLDM8f4qJone5BFrMdqdpJu7ucf/sSjJjAkMBIGA1UdEwEB/wQIMAYBAf8CAQAwDgYDVR0PAQH/BAQDAgeAMAkGByqGSM49BAEDSQAwRgIhAKJn2aF4+zdWxZgbQ9zO2ISu0ZU8dwAiEQsa+9ra99SlAiEA4LBycALe5nJMbD3qcCqIGeTCMNWMVYAFnvVHuS2FEjc="
+    @usage_leaf_under_no_cert_sign_base64 "MIIBPzCB5qADAgECAgEGMAkGByqGSM49BAEwHDEaMBgGA1UEAwwRVGVzdCBJbnRlcm1lZGlhdGUwIBcNMjYxMTEwMTkzNDI0WhgPMjEyNjEwMTcxOTM0MjRaMBQxEjAQBgNVBAMMCVRlc3QgTGVhZjBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABECy4u5/RfvovJgP6QlY5zpLSy6HycW8XNXP/YRrr6EUL6OD7hNpmMue3Awl8JNMX/gYv8GML4qmmEfcW3YiKjKjIDAeMAwGA1UdEwEB/wQCMAAwDgYDVR0PAQH/BAQDAgeAMAkGByqGSM49BAEDSQAwRgIhAKreOCL5jstZxvCt3qXPwTwnUAcdlqalkuYxej5QpPimAiEAk1Genp4jnSxtxxSbwpwl4t9txfO0Z93E3Ie2lWV+B5I="
+    # Leaf whose keyUsage is keyEncipherment only.
+    @usage_leaf_no_signature_base64 "MIIBPjCB5qADAgECAgEEMAkGByqGSM49BAEwHDEaMBgGA1UEAwwRVGVzdCBJbnRlcm1lZGlhdGUwIBcNMjYxMTEwMTkzNDI0WhgPMjEyNjEwMTcxOTM0MjRaMBQxEjAQBgNVBAMMCVRlc3QgTGVhZjBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABIzhu3oGCRQv5LZrkTZe5aEF7vBB8mrJpHvtplhjX3HGiW04XK3EA2y3QXy2HNTgW3baoqfnQ/FNqYvWl75zihOjIDAeMAwGA1UdEwEB/wQCMAAwDgYDVR0PAQH/BAQDAgUgMAkGByqGSM49BAEDSAAwRQIgQTKvDsutx+lPo4ixB/fCoC6Z4O66y5v/ZHRH3CbuR6gCIQCcWI9Wqu6Wfd+NIetQKVerickZWnwIx3KhJKOkjybtOw=="
+    # Leaf with a critical extension under the unassigned OID 1.2.3.4.5.
+    @usage_leaf_unknown_critical_base64 "MIIBTTCB9aADAgECAgEFMAkGByqGSM49BAEwHDEaMBgGA1UEAwwRVGVzdCBJbnRlcm1lZGlhdGUwIBcNMjYxMTEwMTkzNDI0WhgPMjEyNjEwMTcxOTM0MjRaMBQxEjAQBgNVBAMMCVRlc3QgTGVhZjBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABHdrX4JGJwQ0UBGtKiIT9N62uUyid5208to/dmg/1p7GyKbXW6I5uiSwolTjpaq/vvjTfD7+JRWNqLk+u8qwPSGjLzAtMAwGA1UdEwEB/wQCMAAwDgYDVR0PAQH/BAQDAgeAMA0GBCoDBAUBAf8EAgUAMAkGByqGSM49BAEDSAAwRQIhAOv0PTLLPnM3IsHoueZn5rIqxcoLJDPYMU8P5yUiTKbpAiBo7iTu/NjCbot8mvWQij23T/s18mjBOhZBwPcHcukgcg=="
+    @usage_effective_date 1_800_000_000
+
     test "the real Apple chain still passes key usage and critical extension checks" do
       verifier = ChainVerifier.new([Base.decode64!(@real_apple_root_base64)], true)
 
@@ -1241,86 +1253,37 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
     end
 
     test "rejects an intermediate whose keyUsage does not allow signing certificates" do
-      {verifier, chain} =
-        generated_chain(intermediate_key_usage: [:digitalSignature], leaf_extensions: [])
+      chain = [
+        @usage_leaf_under_no_cert_sign_base64,
+        @usage_intermediate_no_cert_sign_base64,
+        @usage_root_base64
+      ]
 
-      assert {:error, {:invalid_chain, message}} =
-               ChainVerifier.verify_chain(verifier, chain, false, System.system_time(:second))
-
-      assert message =~ "keyUsage"
+      assert {:error, {:invalid_chain, message}} = verify_usage_chain(chain)
+      assert message =~ "keyUsage does not permit keyCertSign"
     end
 
     test "rejects a leaf whose keyUsage does not allow signing data" do
-      {verifier, chain} =
-        generated_chain(
-          intermediate_key_usage: [:keyCertSign],
-          leaf_extensions: [key_usage: X509.Certificate.Extension.key_usage([:keyEncipherment])]
-        )
+      chain = [@usage_leaf_no_signature_base64, @usage_intermediate_base64, @usage_root_base64]
 
-      assert {:error, {:invalid_chain, message}} =
-               ChainVerifier.verify_chain(verifier, chain, false, System.system_time(:second))
-
-      assert message =~ "keyUsage"
+      assert {:error, {:invalid_chain, message}} = verify_usage_chain(chain)
+      assert message =~ "keyUsage does not permit digitalSignature"
     end
 
     test "rejects a certificate with an unrecognized critical extension" do
-      unknown = {:Extension, {1, 2, 3, 4, 5}, true, <<5, 0>>}
+      chain = [
+        @usage_leaf_unknown_critical_base64,
+        @usage_intermediate_base64,
+        @usage_root_base64
+      ]
 
-      {verifier, chain} =
-        generated_chain(
-          intermediate_key_usage: [:keyCertSign],
-          leaf_extensions: [
-            key_usage: X509.Certificate.Extension.key_usage([:digitalSignature]),
-            unknown: unknown
-          ]
-        )
-
-      assert {:error, {:invalid_chain, message}} =
-               ChainVerifier.verify_chain(verifier, chain, false, System.system_time(:second))
-
+      assert {:error, {:invalid_chain, message}} = verify_usage_chain(chain)
       assert message =~ "critical extension"
     end
-  end
 
-  # Builds a throwaway root -> intermediate -> leaf chain and a strict verifier
-  # that trusts its root.
-  defp generated_chain(opts) do
-    alias X509.Certificate.Extension
-
-    root_key = X509.PrivateKey.new_ec(:secp256r1)
-    root = X509.Certificate.self_signed(root_key, "/CN=Test Root", template: :root_ca)
-
-    intermediate_key = X509.PrivateKey.new_ec(:secp256r1)
-
-    intermediate =
-      X509.Certificate.new(
-        X509.PublicKey.derive(intermediate_key),
-        "/CN=Test Intermediate",
-        root,
-        root_key,
-        extensions: [
-          basic_constraints: Extension.basic_constraints(true, 0),
-          key_usage: Extension.key_usage(Keyword.fetch!(opts, :intermediate_key_usage))
-        ]
-      )
-
-    leaf_key = X509.PrivateKey.new_ec(:secp256r1)
-
-    leaf =
-      X509.Certificate.new(
-        X509.PublicKey.derive(leaf_key),
-        "/CN=Test Leaf",
-        intermediate,
-        intermediate_key,
-        extensions:
-          [basic_constraints: Extension.basic_constraints(false)] ++
-            Keyword.fetch!(opts, :leaf_extensions)
-      )
-
-    [leaf_der, intermediate_der, root_der] =
-      Enum.map([leaf, intermediate, root], &X509.Certificate.to_der/1)
-
-    verifier = ChainVerifier.new([root_der], true)
-    {verifier, Enum.map([leaf_der, intermediate_der, root_der], &Base.encode64/1)}
+    defp verify_usage_chain(chain) do
+      verifier = ChainVerifier.new([Base.decode64!(@usage_root_base64)], true)
+      ChainVerifier.verify_chain(verifier, chain, false, @usage_effective_date)
+    end
   end
 end
