@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-10
+
 ### Security
 - API client: identifiers interpolated into request paths (transaction IDs, order IDs, product IDs, message and image identifiers, locales, tokens) are now percent-encoded. Previously a value containing `/`, `..`, `?` or `#` could redirect the signed request to a different App Store Server API endpoint.
 - The verified-certificate cache is now keyed on the verifier's trusted roots as well as the certificate chain. Previously a chain accepted by one verifier was served from the cache to any other verifier in the same VM, even one configured with different root certificates.
