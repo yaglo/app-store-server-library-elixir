@@ -63,11 +63,11 @@ defmodule AppStoreServerLibrary.TelemetryTest do
     end
 
     test "emits exception event on throw" do
-      catch_throw do
+      catch_throw(
         Telemetry.span([:app_store_server_library, :test], %{operation: :throwing}, fn ->
           throw(:test_throw)
         end)
-      end
+      )
 
       assert_receive {:telemetry_event, [:app_store_server_library, :test, :start], _, _}
 
@@ -76,11 +76,11 @@ defmodule AppStoreServerLibrary.TelemetryTest do
     end
 
     test "emits exception event on exit" do
-      catch_exit do
+      catch_exit(
         Telemetry.span([:app_store_server_library, :test], %{operation: :exiting}, fn ->
           exit(:test_exit)
         end)
-      end
+      )
 
       assert_receive {:telemetry_event, [:app_store_server_library, :test, :start], _, _}
 
