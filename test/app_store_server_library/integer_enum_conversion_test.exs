@@ -276,7 +276,10 @@ defmodule AppStoreServerLibrary.IntegerEnumConversionTest do
 
     test "converts price_increase_status 1 to :customer_consented_or_was_notified_without_needing_consent" do
       {:ok, payload} = JWSRenewalInfoDecodedPayload.new(%{price_increase_status: 1})
-      assert payload.price_increase_status == :customer_consented_or_was_notified_without_needing_consent
+
+      assert payload.price_increase_status ==
+               :customer_consented_or_was_notified_without_needing_consent
+
       assert payload.raw_price_increase_status == 1
     end
 

@@ -82,7 +82,12 @@ defmodule AppStoreServerLibrary.Models.AppTransaction do
              {"raw_original_platform", :string}
            ]),
          {:ok, map} <-
-           Validator.optional_string_enum(map, "original_platform", @purchase_platform_allowed, PurchasePlatform),
+           Validator.optional_string_enum(
+             map,
+             "original_platform",
+             @purchase_platform_allowed,
+             PurchasePlatform
+           ),
          {:ok, map} <-
            Validator.optional_string_enum(map, "receipt_type", @environment_allowed, Environment) do
       {:ok, struct(__MODULE__, map)}

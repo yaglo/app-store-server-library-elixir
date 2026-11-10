@@ -180,9 +180,19 @@ defmodule AppStoreServerLibrary.Models.JWSRenewalInfoDecodedPayload do
              OfferType
            ),
          {:ok, map} <-
-           Validator.optional_string_enum(map, "offer_discount_type", @offer_discount_allowed, OfferDiscountType),
+           Validator.optional_string_enum(
+             map,
+             "offer_discount_type",
+             @offer_discount_allowed,
+             OfferDiscountType
+           ),
          {:ok, map} <-
-           Validator.optional_string_enum(map, "environment", Environment.allowed_values(), Environment),
+           Validator.optional_string_enum(
+             map,
+             "environment",
+             Environment.allowed_values(),
+             Environment
+           ),
          {:ok, parsed_map} <- parse_advanced_commerce_info(map) do
       {:ok, struct(__MODULE__, parsed_map)}
     end

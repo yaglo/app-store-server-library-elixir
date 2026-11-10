@@ -889,8 +889,8 @@ defmodule AppStoreServerLibrary.ChainVerifierTest do
       assert {:ok, der} = ChainVerifier.build_ocsp_request(leaf_der, intermediate_der)
 
       assert {:OCSPRequest,
-              {:TBSRequest, _, _, [{:Request, {:CertID, _, issuer_name_hash, _, _}, _}], _},
-              _} = :public_key.der_decode(:OCSPRequest, der)
+              {:TBSRequest, _, _, [{:Request, {:CertID, _, issuer_name_hash, _, _}, _}], _}, _} =
+               :public_key.der_decode(:OCSPRequest, der)
 
       expected_hash = :crypto.hash(:sha, :public_key.der_encode(:Name, subject))
       assert issuer_name_hash == expected_hash

@@ -154,7 +154,12 @@ defmodule AppStoreServerLibrary.Models.ResponseBodyV2DecodedPayload do
              {"external_purchase_token", :map}
            ]),
          {:ok, map} <-
-           Validator.optional_string_enum(map, "notification_type", @notification_types, NotificationTypeV2),
+           Validator.optional_string_enum(
+             map,
+             "notification_type",
+             @notification_types,
+             NotificationTypeV2
+           ),
          {:ok, map} <-
            Validator.optional_string_enum(map, "subtype", @subtypes, SubtypeV2) do
       {:ok, struct(__MODULE__, map)}
